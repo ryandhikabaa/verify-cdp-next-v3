@@ -1,0 +1,42 @@
+{
+  "name": "verify-cdp-next",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "dev": "node server.mjs",
+    "dev:http": "set HTTPS=false&& node server.mjs",
+    "build": "next build",
+    "start": "set NODE_ENV=production&& node server.mjs",
+    "lint": "tsc --noEmit",
+    "db:dotvera:setup": "node scripts/setup-dotvera.mjs",
+    "db:dotvera:v2:setup": "node scripts/setup-dotvera-v2.mjs",
+    "db:dotvera:migrate-patterns": "node scripts/migrate-legacy-patterns-to-dotvera.mjs",
+    "db:dotvera:seed-admin": "node scripts/seed-dotvera-admin.mjs"
+  },
+  "dependencies": {
+    "@types/qrcode": "^1.5.6",
+    "@zxing/browser": "^0.2.1",
+    "@zxing/library": "^0.23.0",
+    "dotenv": "^17.2.3",
+    "jszip": "^3.10.1",
+    "leaflet": "^1.9.4",
+    "lucide-react": "^0.546.0",
+    "next": "15.5.3",
+    "pg": "^8.22.0",
+    "qrcode": "^1.5.4",
+    "react": "^19.0.1",
+    "react-dom": "^19.0.1",
+    "react-leaflet": "^5.0.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.1.14",
+    "@types/node": "^22.14.0",
+    "@types/pg": "^8.15.5",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "canvas": "^3.2.3",
+    "tailwindcss": "^4.1.14",
+    "tsx": "^4.23.12",
+    "typescript": "~5.8.2"
+  }
+}
