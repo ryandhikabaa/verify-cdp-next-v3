@@ -1,0 +1,16 @@
+{
+  "format": "v3-payload",
+  "version": 1,
+  "alphabet": "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_",
+  "vectors": [
+    {"payload": "", "codewordHex": "0100000000000000000000000000000000000000c30b42f3fa34344383870bce"},
+    {"payload": "A", "codewordHex": "01010000000000000000000000000000000000001d14ab025f5192055f148bf9"},
+    {"payload": "abc-09_", "codewordHex": "010769b73ed3dfc0000000000000000000000000ff10d52eabbf1637e60931d5"},
+    {"payload": "ABCDEFGHIJKLMNOPQRSTUVWX", "codewordHex": "011800108310518720928b30d38f41149351559788ad1ba1436ab91de8e5a7f4"}
+  ],
+  "vectorStatus": "Normative TypeScript fixtures verified against the ZXing Reed–Solomon reference parameters on 2026-08-26; Dart/Kotlin/Swift implementations must pass these same vectors before release.",
+  "corruption": {
+    "correctableByteErrors": 5,
+    "uncorrectableByteErrors": 6
+  }
+}

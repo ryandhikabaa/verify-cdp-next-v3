@@ -19,3 +19,5 @@ export {renderCDPDisplayToCanvas, renderRectangularCDPToCanvas, renderCanvasWith
 export type {CanvasContentBounds, CompositeLayoutMetadata} from './render';
 export {decodeAndAlignPattern} from './decode';
 export {calculateSimilarity} from './similarity';
+export {decodeV3Payload, encodeV3Payload, validateV3Payload, V3_PAYLOAD_CONSTANTS} from './v3-payload';
+export type {V3DecodedPayload, V3PayloadCodeword} from './v3-payload';
