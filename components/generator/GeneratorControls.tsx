@@ -1,14 +1,13 @@
 import type {ReactNode} from 'react';
 import {Database, Download, LoaderCircle} from 'lucide-react';
 import {NumberField} from '@/components/ui/NumberField';
-import {RECT_PATTERN_DOT_DENSITY} from '@/lib/cdp';
+import {RECT_PATTERN_DOT_DENSITY, V3_PAYLOAD_CONSTANTS} from '@/lib/cdp';
 import type {GeneratorSettings, GreyTextureVersion} from '@/lib/types';
 
-const CDP_PAYLOAD_MAX_LENGTH = 12;
-const LOCKED_QR_PAYLOAD = 'https://puragroup.com';
+const CDP_PAYLOAD_MAX_LENGTH = V3_PAYLOAD_CONSTANTS.MAX_PAYLOAD_LENGTH;
 
 function normalizePayloadInput(value: string) {
-  return value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, CDP_PAYLOAD_MAX_LENGTH);
+  return value.replace(/[^A-Za-z0-9_-]/g, '').slice(0, CDP_PAYLOAD_MAX_LENGTH);
 }
 
 const GREY_VERSION_OPTIONS: {value: GreyTextureVersion; label: string}[] = [
@@ -46,8 +45,8 @@ export function GeneratorControls({
   greyTextureVersion: GreyTextureVersion;
   setGreyTextureVersion: (value: GreyTextureVersion) => void;
   settings: GeneratorSettings;
-  payloadDraft: {payload1: string; payloadQr: string; payload2: string};
-  setPayloadDraft: (updater: (current: {payload1: string; payloadQr: string; payload2: string}) => {payload1: string; payloadQr: string; payload2: string}) => void;
+  payloadDraft: {payload: string};
+  setPayloadDraft: (updater: (current: {payload: string}) => {payload: string}) => void;
   onApplyPayloadDraft: () => void;
   onRandomPayloadDraft: () => void;
   onSave: () => void;
@@ -70,7 +69,7 @@ export function GeneratorControls({
 
         <div className="grid gap-2 sm:grid-cols-2">
           <NumberField label="Jumlah" value={batchCount} min={1} max={100} onChange={setBatchCount} />
-          <NumberField label="Panjang Seed" value={seedLength} min={1} max={12} onChange={setSeedLength} />
+          <NumberField label="Panjang Seed" value={seedLength} min={1} max={24} onChange={setSeedLength} />
         </div>
         <div className="grid grid-cols-[86px_minmax(0,1fr)] items-center gap-2 rounded-lg border border-slate-200 bg-slate-50/60 px-2 py-1.5">
           <div className="text-[9px] font-black uppercase tracking-[0.16em] text-slate-500">Grey version</div>
@@ -98,23 +97,13 @@ export function GeneratorControls({
         </div>
         <div className="rounded-lg border border-cyan-100 bg-cyan-50/20 p-2.5">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="text-[9px] font-black uppercase tracking-[0.18em] text-cyan-700">Payload layout v2.1</div>
-            <div className="text-[9px] font-bold text-cyan-700">QR terkunci</div>
+            <div className="text-[9px] font-black uppercase tracking-[0.18em] text-cyan-700">Payload layout V3</div>
+              <div className="text-[9px] font-bold text-cyan-700">QR anchor</div>
           </div>
           <div className="mt-2 grid gap-2 lg:grid-cols-[minmax(0,0.82fr)_minmax(0,1fr)] lg:items-start">
-            <div className="grid gap-2">
-              <label className="block">
-                <span className="mb-1 block text-[9px] font-black uppercase tracking-wider text-slate-500">payload_1 · CDP kiri</span>
-                <input value={payloadDraft.payload1} onChange={(event) => setPayloadDraft((current) => ({...current, payload1: normalizePayloadInput(event.target.value)}))} maxLength={CDP_PAYLOAD_MAX_LENGTH} inputMode="text" autoCapitalize="characters" className="w-full rounded-md border border-slate-200 bg-white px-2.5 py-1.5 font-mono text-xs uppercase text-slate-800 outline-none focus:border-cyan-300" />
-              </label>
-              <label className="block">
-                <span className="mb-1 block text-[9px] font-black uppercase tracking-wider text-slate-500">payload_2 · CDP kanan</span>
-                <input value={payloadDraft.payload2} onChange={(event) => setPayloadDraft((current) => ({...current, payload2: normalizePayloadInput(event.target.value)}))} maxLength={CDP_PAYLOAD_MAX_LENGTH} inputMode="text" autoCapitalize="characters" className="w-full rounded-md border border-slate-200 bg-white px-2.5 py-1.5 font-mono text-xs uppercase text-slate-800 outline-none focus:border-cyan-300" />
-              </label>
-            </div>
-            <label className="block">
-              <span className="mb-1 block text-[9px] font-black uppercase tracking-wider text-slate-500">payload_qr · QR tengah</span>
-              <input value={LOCKED_QR_PAYLOAD} readOnly className="w-full rounded-md border border-cyan-200 bg-white/70 px-2.5 py-1.5 font-mono text-xs text-cyan-900 outline-none" />
+            <label className="block lg:col-span-2">
+              <span className="mb-1 block text-[9px] font-black uppercase tracking-wider text-slate-500">payload · V3 pattern kanan QR</span>
+              <input value={payloadDraft.payload} onChange={(event) => setPayloadDraft(() => ({payload: normalizePayloadInput(event.target.value)}))} maxLength={CDP_PAYLOAD_MAX_LENGTH} inputMode="text" className="w-full rounded-md border border-slate-200 bg-white px-2.5 py-1.5 font-mono text-xs text-slate-800 outline-none focus:border-cyan-300" />
             </label>
           </div>
           <div className="mt-2 flex flex-wrap items-center gap-2">
@@ -124,11 +113,11 @@ export function GeneratorControls({
             <button type="button" onClick={onApplyPayloadDraft} className="rounded-md bg-cyan-700 px-2.5 py-1.5 text-[11px] font-black text-white transition hover:bg-cyan-800">
               Update preview
             </button>
-            <span className="text-[9px] font-semibold text-slate-500">CDP 12 char · QR locked · layout kiri/QR/kanan.</span>
+            <span className="text-[9px] font-semibold text-slate-500">V3 maksimal 24 karakter · QR kiri · satu pattern kanan.</span>
           </div>
         </div>
         <div className={`text-[10px] font-semibold ${generationError ? 'text-rose-600' : 'text-slate-400'}`}>
-          {generationError ?? 'Seed dibuat acak dari huruf kapital dan angka, maksimal 12 karakter, tanpa duplikasi.'}
+          {generationError ?? 'Payload V3 menggunakan 1–24 karakter: A-Z, a-z, 0-9, - dan _.'}
         </div>
 
         <div className="flex flex-wrap gap-2 border-t border-slate-100 pt-2">

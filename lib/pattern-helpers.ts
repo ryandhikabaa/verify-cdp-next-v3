@@ -45,7 +45,7 @@ const RANDOM_SEED_FINAL_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ123456789';
 
 /** Generates a secure random seed while avoiding the trailing zero used as encryption padding. */
 export function makeRandomSeed(length: number) {
-  const safeLength = Math.min(Math.max(Math.trunc(length), 1), 12);
+  const safeLength = Math.min(Math.max(Math.trunc(length), 1), 24);
   const bytes = new Uint8Array(safeLength * 2);
   let seed = '';
 

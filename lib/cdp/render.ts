@@ -3,7 +3,7 @@ import {RECT_PATTERN_COLUMNS, RECT_PATTERN_ROWS} from './constants';
 import {getFragileTextureCells, getRectangularFragileTextureCells} from './fragile-noise';
 
 export type CompositeLayoutMetadata = {
-  layoutVersion: 'qr-pattern-v2' | 'three-part-v2.1';
+  layoutVersion: 'qr-pattern-v2' | 'three-part-v2.1' | 'v3-qr-pattern';
   qrPosition: 'left' | 'center';
   patternPosition: 'right';
   leftPosition?: 'left';
@@ -20,6 +20,22 @@ export type CompositeLayoutMetadata = {
   canvasWidthPx: number;
   canvasHeightPx: number;
   footerHeightPx: number;
+};
+
+export type V3QrPatternLayoutMetadata = {
+  layoutVersion: 'v3-qr-pattern';
+  qrX: number;
+  qrY: number;
+  patternX: number;
+  patternY: number;
+  qrWidthPx: number;
+  qrHeightPx: number;
+  patternWidthPx: number;
+  patternHeightPx: number;
+  gapPx: number;
+  rightMarginPx: number;
+  contentWidthPx: number;
+  contentHeightPx: number;
 };
 
 export type CanvasContentBounds = {
@@ -261,6 +277,50 @@ export function renderCompositeQrPatternToCanvas(
     drawFooterSeedLabel(ctx, seed, layout.canvasWidthPx, contentHeight, layout.footerHeightPx);
   }
 
+  return layout;
+}
+
+/** Renders the locked V3 layout: QR followed by one equal-height pattern. */
+export function getV3QrPatternLayoutMetadata(
+  qrWidth: number,
+  qrHeight: number,
+  patternWidth: number,
+  patternHeight: number,
+  qrModuleCount: number,
+  qrMarginModules = 1,
+): V3QrPatternLayoutMetadata {
+  if (![qrWidth, qrHeight, patternWidth, patternHeight, qrModuleCount].every(Number.isFinite) || qrModuleCount <= 0) {
+    throw new Error('V3 layout dimensions and QR module count must be positive finite numbers.');
+  }
+  const qrModuleSize = qrWidth / (qrModuleCount + qrMarginModules * 2);
+  const gapPx = Math.max(1, Math.round(qrModuleSize));
+  const rightMarginPx = Math.max(1, Math.round(qrModuleSize));
+  const contentHeightPx = Math.max(qrHeight, patternHeight);
+  return {
+    layoutVersion: 'v3-qr-pattern', qrX: 0, qrY: Math.floor((contentHeightPx - qrHeight) / 2),
+    patternX: qrWidth + gapPx, patternY: Math.floor((contentHeightPx - patternHeight) / 2),
+    qrWidthPx: qrWidth, qrHeightPx: qrHeight, patternWidthPx: patternWidth, patternHeightPx: patternHeight,
+    gapPx, rightMarginPx, contentWidthPx: qrWidth + gapPx + patternWidth + rightMarginPx, contentHeightPx,
+  };
+}
+
+export function renderV3QrPatternToCanvas(
+  qrCanvas: HTMLCanvasElement,
+  patternCanvas: HTMLCanvasElement,
+  targetCanvas: HTMLCanvasElement,
+  qrModuleCount: number,
+  qrMarginModules = 1,
+) {
+  const layout = getV3QrPatternLayoutMetadata(qrCanvas.width, qrCanvas.height, patternCanvas.width, patternCanvas.height, qrModuleCount, qrMarginModules);
+  targetCanvas.width = layout.contentWidthPx;
+  targetCanvas.height = layout.contentHeightPx;
+  const ctx = targetCanvas.getContext('2d');
+  if (!ctx) return layout;
+  ctx.imageSmoothingEnabled = false;
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, targetCanvas.width, targetCanvas.height);
+  ctx.drawImage(qrCanvas, layout.qrX, layout.qrY);
+  ctx.drawImage(patternCanvas, layout.patternX, layout.patternY);
   return layout;
 }
 

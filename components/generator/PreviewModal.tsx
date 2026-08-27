@@ -3,20 +3,14 @@
 import {X} from 'lucide-react';
 import {useEffect, useRef} from 'react';
 import type {GeneratorSettings, PatternPreview} from '@/lib/types';
-import {CDP_PAYLOAD_CHARS, CDP_RENDER_SCALE, generateRectangularCDPMatrix, normalizeCDPSettings, renderRectangularCDPToCanvas, renderThreePartCompositeToCanvas} from '@/lib/cdp';
+import {CDP_RENDER_SCALE, generateV3Matrix, normalizeCDPSettings, renderRectangularCDPToCanvas, renderV3QrPatternToCanvas, validateV3Payload} from '@/lib/cdp';
 import QRCode from 'qrcode';
 
 const LOCKED_QR_PAYLOAD = 'https://puragroup.com';
 
-function resolvePayloads(settings: GeneratorSettings) {
-  const sanitizePayload = (value: string | undefined) => (value ?? '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, CDP_PAYLOAD_CHARS);
-  const serialPayload = settings.seed.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, CDP_PAYLOAD_CHARS * 2);
-  const payload1 = sanitizePayload(settings.payload1 ?? settings.payload) || serialPayload.slice(0, CDP_PAYLOAD_CHARS);
-  return {
-    payload1,
-    payload2: sanitizePayload(settings.payload2) || serialPayload.slice(CDP_PAYLOAD_CHARS, CDP_PAYLOAD_CHARS * 2),
-    payloadQr: LOCKED_QR_PAYLOAD,
-  };
+function resolvePayload(settings: GeneratorSettings) {
+  const payload = settings.payload ?? settings.payload1 ?? settings.seed;
+  return validateV3Payload(payload);
 }
 
 /** Shows a fullscreen preview of the currently selected pattern settings. */
@@ -33,11 +27,11 @@ export function PreviewModal({settings, preview, onClose}: {settings?: Generator
         ...normalized,
         dotSize: normalized.dotSize * CDP_RENDER_SCALE,
       };
-      const leftPatternCanvas = document.createElement('canvas');
-      const rightPatternCanvas = document.createElement('canvas');
+      const patternCanvas = document.createElement('canvas');
 
       const qrCanvas = document.createElement('canvas');
-      const {payload1, payload2, payloadQr} = resolvePayloads(normalized);
+      const payload = resolvePayload(normalized);
+      const payloadQr = LOCKED_QR_PAYLOAD;
       const qrSize = renderSettings.gridSize * renderSettings.dotSize;
       const qrMarginModules = 1;
       const qrModel = QRCode.create(payloadQr, {
@@ -59,17 +53,11 @@ export function PreviewModal({settings, preview, onClose}: {settings?: Generator
         Math.round(qrCanvas.height * (qrModuleCount / (qrModuleCount + qrMarginModules * 2))),
       );
 
-      renderRectangularCDPToCanvas(generateRectangularCDPMatrix({...normalized, payload: payload1}), leftPatternCanvas, {...renderSettings, payload: payload1}, {
+      const matrix = generateV3Matrix(payload);
+      renderRectangularCDPToCanvas({rows: 64, columns: 32, cells: matrix}, patternCanvas, {...renderSettings, payload}, {
         targetHeight: qrContentHeight,
       });
-      renderRectangularCDPToCanvas(generateRectangularCDPMatrix({...normalized, payload: payload2}), rightPatternCanvas, {...renderSettings, payload: payload2}, {
-        targetHeight: qrContentHeight,
-      });
-
-      renderThreePartCompositeToCanvas(leftPatternCanvas, qrCanvas, rightPatternCanvas, canvasRef.current!, {
-        top: payload1,
-        bottom: payload2,
-      });
+      renderV3QrPatternToCanvas(qrCanvas, patternCanvas, canvasRef.current!, qrModuleCount, qrMarginModules);
     })();
   }, [imageMode, settings]);
 

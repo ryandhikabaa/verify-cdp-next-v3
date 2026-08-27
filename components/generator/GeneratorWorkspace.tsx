@@ -127,7 +127,7 @@ export function GeneratorWorkspace() {
               <div className="text-[11px] font-black uppercase tracking-[0.24em] text-cyan-700">Konfirmasi simpan</div>
               <h3 className="mt-3 text-2xl font-black tracking-[-0.04em] text-slate-950">Simpan pattern ini?</h3>
               <p className="mt-4 text-sm leading-7 text-slate-500">
-                Pattern akan dirender dan disimpan ke database dengan payload CDP kiri, QR terkunci, dan CDP kanan saat ini.
+                Pattern V3 akan dirender dan disimpan ke database dengan satu payload, QR anchor, dan pattern di sisi kanan.
               </p>
               <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:justify-end">
                 <button

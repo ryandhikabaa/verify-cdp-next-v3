@@ -1,6 +1,6 @@
 # Verify CDP Web V3 — Development Roadmap
 
-**Status:** Phase 1 complete; ready to begin Phase 2 matrix implementation
+**Status:** Phase 3 complete; ready to proceed with Phase 4/5 acceptance work
 **Baseline:** `verify-cdp-next-v2`  
 **Target project:** `verify-cdp-next-v3`  
 **Last updated:** 2026-08-26
@@ -162,7 +162,7 @@ Required behavior:
 
 **Gate:** **Passed for the deterministic local codec (2026-08-27).** The 64 × 32 matrix round-trips empty, short, normal, and maximum payloads; deterministic output is stable; controlled carrier corruption is recovered through repetition voting and the Phase 1 RS/CRC validation; invalid dimensions, cell values, alphabet, and capacity are rejected. Camera/image sampling, geometric transforms, and physical noise remain Phase 5/10 acceptance tests.
 
-### Phase 3 — V3 Renderer
+### Phase 3 — V3 Renderer *(complete)*
 
 **Goal:** render a stable QR-plus-right-pattern image.
 
@@ -193,12 +193,14 @@ Test and preserve:
 - Pixel/layout regression test.
 - Digital sample images.
 
-**Gate:** rendered dimensions and coordinates match the contract at every supported output size.
+**Current implementation (2026-08-27):** Added the dedicated `v3-qr-pattern` renderer and measurable layout metadata. The QR is placed first, the pattern is placed only on the right, the gap is derived from the QR module size, and both elements are vertically centered within the content area. The output includes a measured white right margin so the pattern does not touch the saved canvas edge. `components/generator/PreviewModal.tsx` and the main generator workflow use the V3 payload codec, 64 × 32 V3 matrix, and single-pattern renderer; the legacy two-pattern composition is no longer used by the V3 path. Geometry, canvas-dimension, right-margin pixel, and focused end-to-end render regression tests pass.
+
+**Gate:** **Passed for the implemented V3 renderer contract (2026-08-27).** Layout coordinates, dimensions, QR-module gap, measured right margin, white edge preservation, and deterministic rendering are covered by regression tests. Browser/device and physical-print acceptance remain later Phase 5/10 work.
 
 ### Phase 4 — V3 Generator
 
 **Goal:** connect payload encoding, matrix generation, QR generation, and rendering.
-
+z
 Required behavior:
 
 - Accept payloads above 12 digits up to the approved capacity.
@@ -446,7 +448,7 @@ These must be resolved before Phase 1 is considered complete:
 - [x] Phase 0 — Scope and contracts
 - [ ] Phase 1 — Payload encoding (portable contract and independent ECC pending)
 - [ ] Phase 2 — Matrix and local decoder
-- [ ] Phase 3 — Renderer
+- [x] Phase 3 — Renderer
 - [ ] Phase 4 — Generator
 - [ ] Phase 5 — QR-anchored decoder
 - [ ] Phase 6 — Camera performance

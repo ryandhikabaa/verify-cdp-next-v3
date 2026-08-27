@@ -15,8 +15,8 @@ export {GREY_TEXTURE_STYLE_TRACE, GREY_TEXTURE_TRACE, GREY_TEXTURE_TRACES, getFr
 export {stringToBits, bitsToString} from './bit-encoding';
 export {generateCDPMatrix, generateRectangularCDPMatrix, decodeRectangularCDPMatrix} from './matrix';
 export {renderCDPToCanvas} from './render';
-export {renderCDPDisplayToCanvas, renderRectangularCDPToCanvas, renderCanvasWithFooter, getFooterHeight, getCanvasContentBounds, getCompositeLayoutMetadata, renderCompositeQrPatternToCanvas, getThreePartCompositeLayoutMetadata, renderThreePartCompositeToCanvas} from './render';
-export type {CanvasContentBounds, CompositeLayoutMetadata} from './render';
+export {renderCDPDisplayToCanvas, renderRectangularCDPToCanvas, renderCanvasWithFooter, getFooterHeight, getCanvasContentBounds, getCompositeLayoutMetadata, renderCompositeQrPatternToCanvas, getV3QrPatternLayoutMetadata, renderV3QrPatternToCanvas, getThreePartCompositeLayoutMetadata, renderThreePartCompositeToCanvas} from './render';
+export type {CanvasContentBounds, CompositeLayoutMetadata, V3QrPatternLayoutMetadata} from './render';
 export {decodeAndAlignPattern} from './decode';
 export {calculateSimilarity} from './similarity';
 export {decodeV3Payload, encodeV3Payload, validateV3Payload, V3_PAYLOAD_CONSTANTS} from './v3-payload';
