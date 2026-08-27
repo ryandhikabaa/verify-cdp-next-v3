@@ -1,6 +1,6 @@
 # Verify CDP Web V3 — Development Roadmap
 
-**Status:** Phase 3 complete; ready to proceed with Phase 4/5 acceptance work
+**Status:** Phase 4 complete; ready to proceed with Phase 5 acceptance work
 **Baseline:** `verify-cdp-next-v2`  
 **Target project:** `verify-cdp-next-v3`  
 **Last updated:** 2026-08-26
@@ -200,7 +200,6 @@ Test and preserve:
 ### Phase 4 — V3 Generator
 
 **Goal:** connect payload encoding, matrix generation, QR generation, and rendering.
-z
 Required behavior:
 
 - Accept payloads above 12 digits up to the approved capacity.
@@ -218,7 +217,9 @@ Required behavior:
 - Generator tests.
 - Sample fixture set.
 
-**Gate:** every generated digital sample is decoded successfully by the local decoder.
+**Current implementation (2026-08-27):** The V3 generator workflow is connected end-to-end for single generation and batch generation. It validates the 24-character V3 contract, renders the QR-plus-right-pattern layout, preserves the same renderer for preview/download/save, and writes V3 layout metadata without a second semantic payload. The batch path no longer invokes the legacy 12-character encryption workflow. A maximum-length generator contract test verifies payload → matrix → local decoder round-trip.
+
+**Gate:** **Passed for the local digital generator contract (2026-08-27).** Maximum-length and invalid-payload contract tests pass, the complete V3 regression suite passes, and TypeScript reports no errors in the changed generator/renderer/test files. Browser/device and physical-print acceptance remain later phases.
 
 ### Phase 5 — QR-Anchored V3 Web Decoder
 
@@ -449,7 +450,7 @@ These must be resolved before Phase 1 is considered complete:
 - [ ] Phase 1 — Payload encoding (portable contract and independent ECC pending)
 - [ ] Phase 2 — Matrix and local decoder
 - [x] Phase 3 — Renderer
-- [ ] Phase 4 — Generator
+- [x] Phase 4 — Generator
 - [ ] Phase 5 — QR-anchored decoder
 - [ ] Phase 6 — Camera performance
 - [ ] Phase 7 — Multi-frame recovery

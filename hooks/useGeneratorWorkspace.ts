@@ -4,7 +4,7 @@ import JSZip from 'jszip';
 import QRCode from 'qrcode';
 import {useCallback, useEffect, useMemo, useState} from 'react';
 import {usePatternLibrary} from '@/hooks/usePatternLibrary';
-import {CDP_PREVIEW_RENDER_SCALE, CDP_RENDER_SCALE, generateV3Matrix, normalizeCDPSettings, renderRectangularCDPToCanvas, renderV3QrPatternToCanvas, STANDARD_CDP_SETTINGS, validateV3Payload, withEncryptedPayload, withGreyTextureStyleTrace} from '@/lib/cdp';
+import {CDP_PREVIEW_RENDER_SCALE, CDP_RENDER_SCALE, generateV3Matrix, normalizeCDPSettings, renderRectangularCDPToCanvas, renderV3QrPatternToCanvas, STANDARD_CDP_SETTINGS, validateV3Payload, withGreyTextureStyleTrace} from '@/lib/cdp';
 import {ApiClientError, fetchApi} from '@/lib/api-client';
 import {API_BASE} from '@/lib/app-constants';
 import {docToSettings, makeRandomSeed, sanitizeFilename} from '@/lib/pattern-helpers';
@@ -151,38 +151,6 @@ export function useGeneratorWorkspace() {
     setValidationDialogMessage(payloadError);
     return false;
   }, [payloadDraft]);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    void (async () => {
-      try {
-        const encrypted = await withEncryptedPayload(settings);
-        if (cancelled) return;
-        setSettings((current) => {
-          if (
-            current.seed !== settings.seed
-            || (current.payload === encrypted.payload && current.qrPayload === settings.seed)
-          ) {
-            return current;
-          }
-          return {
-            ...current,
-            payload: encrypted.payload,
-            payload1: current.payload1 ?? encrypted.payload,
-            qrPayload: LOCKED_QR_PAYLOAD,
-            payloadQr: LOCKED_QR_PAYLOAD,
-          };
-        });
-      } catch (error) {
-        console.error('Failed to sync encrypted seed payload', error);
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [settings.seed]);
 
   useEffect(() => {
     void patternLibrary.loadPatterns();
