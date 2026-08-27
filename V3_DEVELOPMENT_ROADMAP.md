@@ -138,7 +138,7 @@ Required behavior:
 
 **Gate:** **Passed (2026-08-26).** All valid fixtures pass encode → decode exactly; the codec applies Reed–Solomon correction before structural and CRC validation; one-to-five byte corruption is recovered and six-byte corruption is rejected. The deterministic fixtures were also checked against the ZXing Reed–Solomon reference parameters. Remaining cross-platform Dart/Kotlin/Swift checks are implementation acceptance work, not a blocker for the TypeScript Phase 1 gate.
 
-### Phase 2 — Matrix and Local Decoder
+### Phase 2 — Matrix and Local Decoder *(complete for deterministic local codec)*
 
 **Goal:** prove the one-pattern format without camera variables.
 
@@ -158,7 +158,9 @@ Required behavior:
 - Noise and corruption test.
 - Capacity test.
 
-**Gate:** local decoder passes all payload fixtures before camera work begins.
+**Current implementation (2026-08-27):** `lib/cdp/v3-matrix.ts` implements a deterministic 64 × 32 carrier matrix. Each of the 256 codeword bits is distributed across eight carrier cells using a coprime step of 17 modulo 256 and a deterministic reversible mask. The local decoder validates dimensions and cell values, votes repeated carriers, then delegates codeword validation and Reed–Solomon/CRC recovery to the Phase 1 codec. Initial round-trip, deterministic-output, five-cell corruption, and invalid-input tests pass.
+
+**Gate:** **Passed for the deterministic local codec (2026-08-27).** The 64 × 32 matrix round-trips empty, short, normal, and maximum payloads; deterministic output is stable; controlled carrier corruption is recovered through repetition voting and the Phase 1 RS/CRC validation; invalid dimensions, cell values, alphabet, and capacity are rejected. Camera/image sampling, geometric transforms, and physical noise remain Phase 5/10 acceptance tests.
 
 ### Phase 3 — V3 Renderer
 

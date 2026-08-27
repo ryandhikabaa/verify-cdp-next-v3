@@ -12,7 +12,7 @@ The generator and all verifiers must produce and consume identical bytes. No pla
 
 The payload alphabet is exactly:
 
-```text0
+```text
 ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_
 ```
 
