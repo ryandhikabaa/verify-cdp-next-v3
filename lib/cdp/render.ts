@@ -34,6 +34,7 @@ export type V3QrPatternLayoutMetadata = {
   patternHeightPx: number;
   gapPx: number;
   rightMarginPx: number;
+  footerHeightPx: number;
   contentWidthPx: number;
   contentHeightPx: number;
 };
@@ -295,12 +296,16 @@ export function getV3QrPatternLayoutMetadata(
   const qrModuleSize = qrWidth / (qrModuleCount + qrMarginModules * 2);
   const gapPx = Math.max(1, Math.round(qrModuleSize));
   const rightMarginPx = Math.max(1, Math.round(qrModuleSize));
-  const contentHeightPx = Math.max(qrHeight, patternHeight);
+  // Reserve a deliberately generous print footer: at small physical sizes the
+  // payload must remain legible after rasterisation and trimming.
+  const footerHeightPx = Math.max(104, Math.round(patternWidth * 0.46));
+  const patternY = Math.max(0, Math.floor((qrHeight - patternHeight) / 2));
+  const contentHeightPx = Math.max(qrHeight, patternY + patternHeight) + footerHeightPx;
   return {
-    layoutVersion: 'v3-qr-pattern', qrX: 0, qrY: Math.floor((contentHeightPx - qrHeight) / 2),
-    patternX: qrWidth + gapPx, patternY: Math.floor((contentHeightPx - patternHeight) / 2),
+    layoutVersion: 'v3-qr-pattern', qrX: 0, qrY: 0,
+    patternX: qrWidth + gapPx, patternY,
     qrWidthPx: qrWidth, qrHeightPx: qrHeight, patternWidthPx: patternWidth, patternHeightPx: patternHeight,
-    gapPx, rightMarginPx, contentWidthPx: qrWidth + gapPx + patternWidth + rightMarginPx, contentHeightPx,
+    gapPx, rightMarginPx, footerHeightPx, contentWidthPx: qrWidth + gapPx + patternWidth + rightMarginPx, contentHeightPx,
   };
 }
 
@@ -310,6 +315,7 @@ export function renderV3QrPatternToCanvas(
   targetCanvas: HTMLCanvasElement,
   qrModuleCount: number,
   qrMarginModules = 1,
+    labels?: {pattern: string},
 ) {
   const layout = getV3QrPatternLayoutMetadata(qrCanvas.width, qrCanvas.height, patternCanvas.width, patternCanvas.height, qrModuleCount, qrMarginModules);
   targetCanvas.width = layout.contentWidthPx;
@@ -321,6 +327,10 @@ export function renderV3QrPatternToCanvas(
   ctx.fillRect(0, 0, targetCanvas.width, targetCanvas.height);
   ctx.drawImage(qrCanvas, layout.qrX, layout.qrY);
   ctx.drawImage(patternCanvas, layout.patternX, layout.patternY);
+    if (labels?.pattern) {
+      const contentWidth = layout.patternX - layout.qrX + layout.patternWidthPx;
+      drawV3PayloadFooter(ctx, labels.pattern, layout.qrX, contentWidth, layout.contentHeightPx - layout.footerHeightPx, layout.footerHeightPx);
+    }
   return layout;
 }
 
@@ -428,6 +438,34 @@ function drawFooterTwoLineLabel(
   const centerY = squareHeight + Math.floor(footerHeight * 0.5);
   if (top) ctx.fillText(top, centerX, centerY - Math.floor(fontSize * 0.32) - lineGap, availableWidth);
   if (bottom) ctx.fillText(bottom, centerX, centerY + Math.floor(fontSize * 0.58) + lineGap, availableWidth);
+  ctx.restore();
+}
+
+function drawV3PayloadFooter(ctx: CanvasRenderingContext2D, payload: string, x: number, width: number, y: number, footerHeight: number) {
+  const value = payload.trim();
+  if (!value) return;
+  ctx.save();
+  ctx.fillStyle = '#111111';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  let fontSize = Math.max(24, Math.floor(footerHeight * 0.56));
+  const maxWidth = width * 0.94;
+  const split = Math.ceil(value.length / 2);
+  const lines = value.length > 18 ? [value.slice(0, split), value.slice(split)] : [value];
+  ctx.font = `700 ${fontSize}px Arial, Helvetica, sans-serif`;
+  while (fontSize > 8 && lines.some((line) => ctx.measureText(line).width > maxWidth)) {
+    fontSize -= 1;
+    ctx.font = `700 ${fontSize}px Arial, Helvetica, sans-serif`;
+  }
+  const lineHeight = Math.min(fontSize * 1.14, footerHeight / lines.length);
+  // Keep the QR/pattern content area unchanged and bias the label toward the
+  // bottom of the reserved footer. This leaves a clearer separation from the
+  // pattern edge for QR-anchored verifier crops.
+  const lineBlockHeight = lineHeight * lines.length;
+  const centeredOffset = (footerHeight - lineBlockHeight) / 2;
+  const downwardOffset = Math.min(Math.floor(footerHeight * 0.12), Math.max(0, footerHeight - lineBlockHeight));
+  const firstLineY = y + centeredOffset + downwardOffset + lineHeight / 2;
+  lines.forEach((line, index) => ctx.fillText(line, x + width / 2, firstLineY + index * lineHeight));
   ctx.restore();
 }
 

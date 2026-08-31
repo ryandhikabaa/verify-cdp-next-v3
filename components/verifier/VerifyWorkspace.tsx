@@ -80,7 +80,7 @@ export function VerifyWorkspace({variant = 'app'}: {variant?: 'app' | 'public'})
           />
 
           <div className={`mt-4 text-center ${variant === 'public' ? 'text-xs text-slate-600' : 'text-[10px] text-slate-400'}`}>
-            Posisikan CDP kiri, QR tengah, dan CDP kanan di dalam kotak. <br />
+            Posisikan seluruh kode V3 (QR di kiri, satu pattern di kanan) di dalam kotak. <br />
             (Ketuk layar video untuk fokus ulang).
           </div>
 
@@ -98,11 +98,8 @@ export function VerifyWorkspace({variant = 'app'}: {variant?: 'app' | 'public'})
                 <div><b>Crop/ROI:</b> {scannerDebug.roiSize}</div>
                 <div><b>QR:</b> {scannerDebug.qrDetected ? 'terdeteksi' : 'belum'}</div>
                 <div><b>QR value:</b> {scannerDebug.qrValue || '-'}</div>
-                <div><b>CDP kiri:</b> {scannerDebug.leftDetected ? (scannerDebug.leftValid ? 'valid' : 'terbaca, belum valid') : 'belum'}</div>
-                <div><b>CDP kanan:</b> {scannerDebug.rightDetected ? (scannerDebug.rightValid ? 'valid' : 'terbaca, belum valid') : 'belum'}</div>
-                <div><b>Payload kiri:</b> <span className="font-mono">{scannerDebug.leftPayload || '-'}</span></div>
-                <div><b>Payload kanan:</b> <span className="font-mono">{scannerDebug.rightPayload || '-'}</span></div>
-                <div className="sm:col-span-2"><b>Gabungan:</b> <span className="font-mono">{scannerDebug.combinedPayload || '-'}</span></div>
+                <div><b>Pattern V3 kanan:</b> {scannerDebug.rightDetected ? (scannerDebug.rightValid ? 'valid' : 'terbaca, belum valid') : 'belum'}</div>
+                <div className="sm:col-span-2"><b>Payload V3:</b> <span className="font-mono">{scannerDebug.rightPayload || scannerDebug.combinedPayload || '-'}</span></div>
                 <div><b>Confidence:</b> {scannerDebug.confidence === null ? '-' : scannerDebug.confidence.toFixed(3)}</div>
               </div>
 
@@ -128,7 +125,7 @@ export function VerifyWorkspace({variant = 'app'}: {variant?: 'app' | 'public'})
                 {scannerDebug.rightCropDataUrl && (
                   <div>
                     <div className="mb-1 font-bold uppercase text-slate-500">Crop kanan</div>
-                    <img src={scannerDebug.rightCropDataUrl} alt="Debug Crop CDP Kanan" className="w-full rounded-lg border border-white/30 bg-white object-contain [image-rendering:pixelated]" />
+                    <img src={scannerDebug.rightCropDataUrl} alt="Debug Crop Pattern V3 Kanan" className="w-full rounded-lg border border-white/30 bg-white object-contain [image-rendering:pixelated]" />
                   </div>
                 )}
               </div>

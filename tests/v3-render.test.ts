@@ -9,7 +9,7 @@ test('V3 layout uses one QR-module gap and equal-height content', () => {
   assert.equal(layout.rightMarginPx, 13);
   assert.equal(layout.patternX, 303);
   assert.equal(layout.contentWidthPx, 636);
-  assert.equal(layout.contentHeightPx, 290);
+  assert.equal(layout.contentHeightPx, 437);
 });
 
 test('V3 renderer preserves dimensions and places QR before pattern', () => {
@@ -24,7 +24,7 @@ test('V3 renderer preserves dimensions and places QR before pattern', () => {
   assert.equal(target.width, layout.contentWidthPx);
   assert.equal(target.height, layout.contentHeightPx);
   assert.equal(target.width, 52);
-  assert.equal(target.height, 20);
+  assert.equal(target.height, 124);
   assert.equal(layout.rightMarginPx, 1);
   const edgePixel = target.getContext('2d').getImageData(target.width - 1, 10, 1, 1).data;
   assert.equal(edgePixel[0], 255);

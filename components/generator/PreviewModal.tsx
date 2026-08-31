@@ -57,7 +57,7 @@ export function PreviewModal({settings, preview, onClose}: {settings?: Generator
       renderRectangularCDPToCanvas({rows: 64, columns: 32, cells: matrix}, patternCanvas, {...renderSettings, payload}, {
         targetHeight: qrContentHeight,
       });
-      renderV3QrPatternToCanvas(qrCanvas, patternCanvas, canvasRef.current!, qrModuleCount, qrMarginModules);
+      renderV3QrPatternToCanvas(qrCanvas, patternCanvas, canvasRef.current!, qrModuleCount, qrMarginModules, {pattern: payload});
     })();
   }, [imageMode, settings]);
 

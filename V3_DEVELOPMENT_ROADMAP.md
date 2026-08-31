@@ -255,6 +255,10 @@ Required behavior:
 - Debug overlay/capture support.
 - Synthetic transform tests.
 
+**Current implementation (2026-08-31):** `hooks/useVerifyScanner.ts` implements the QR-anchored flow. ZXing is configured QR-only with `TRY_HARDER` and no `PURE_BARCODE` hint key — the installed ZXing enables pure mode on key presence even with a `false` value, which silently disabled camera detection and was the root cause of the persistent "QR belum" state. A QR-focused left-region input with a synthetic white quiet zone is used as a fallback attempt when the full-ROI decode fails. Finder points are ordered into a top-left/top-right/bottom-left anchor, expanded by 3.5 modules to the 25-module symbol edge, and the right pattern is cropped with the renderer's exact geometry: pattern height equals the QR symbol height (25 modules), gap equals two modules (one QR quiet-zone module plus one layout gap module), and bounded ±0.5/±1-module correction candidates are tried when the exact crop fails checksum. Crops are exposed for debugging even when the current frame's RS/CRC validation fails, and the primary renderer-derived geometry — not the last search candidate — is what gets displayed. Capture remains capped at 960 px for performance.
+
+**Remaining acceptance work:** device validation of cale/rotation/blur/contrast/noise tolerance, synthetic transform tests, and confidence reporting from actual sampling quality instead of the current constant value.
+
 **Gate:** digital samples pass with scale changes, small rotation, crop offset, blur, contrast changes, and moderate noise.
 
 ### Phase 6 — Camera Control and Performance
@@ -302,13 +306,15 @@ Required behavior:
 
 **Goal:** verify V3 without breaking existing contracts.
 
-Recommended metadata:
+Required metadata:
 
-- `layout_version: v3`
-- `payload_mode: v3`
+- `layout_version: v3-qr-pattern`
+- `payload_mode: three-part` (shared enum; V3 uses a single pattern payload)
 - `pattern_side: right`
 - `payload_length`
 - `checksum_valid`
+
+**Current implementation (2026-08-31):** The verify API (`app/api/verify/route.ts`) accepts `layout_version: v3-qr-pattern`, validates the V3 payload shape (1–24 characters of `A-Z a-z 0-9 - _`), looks it up by serial in `pattern_generated_v21`, and returns AUTHENTIC/COUNTERFEIT without decryption. The client submits `pattern_decode_payload` as the V3 payload with empty left/right chunk fields; `verdictSource` reports `qr-anchor-v3`. Legacy v2.1 and encrypted-payload paths are unchanged.
 
 Required behavior:
 

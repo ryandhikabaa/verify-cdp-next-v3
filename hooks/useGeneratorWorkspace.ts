@@ -166,13 +166,11 @@ export function useGeneratorWorkspace() {
     const patternCanvas = document.createElement('canvas');
     const qrCanvas = document.createElement('canvas');
     const payload = resolveV3Payload(normalized);
-    const payloadQr = LOCKED_QR_PAYLOAD;
-    const safeQrPayload = payloadQr.trim() || normalized.seed;
     const qrSize = renderSettings.gridSize * renderSettings.dotSize;
     const qrMarginModules = 1;
-    const qrModel = QRCode.create(safeQrPayload, {errorCorrectionLevel: 'M'});
+    const qrModel = QRCode.create(LOCKED_QR_PAYLOAD, {errorCorrectionLevel: 'M'});
     const qrModuleCount = qrModel.modules.size;
-    await QRCode.toCanvas(qrCanvas, safeQrPayload, {
+    await QRCode.toCanvas(qrCanvas, LOCKED_QR_PAYLOAD, {
       errorCorrectionLevel: 'M',
       margin: qrMarginModules,
       color: {
@@ -187,7 +185,7 @@ export function useGeneratorWorkspace() {
     });
 
     const compositeCanvas = document.createElement('canvas');
-    const layout = renderV3QrPatternToCanvas(qrCanvas, patternCanvas, compositeCanvas, qrModuleCount, qrMarginModules);
+    const layout = renderV3QrPatternToCanvas(qrCanvas, patternCanvas, compositeCanvas, qrModuleCount, qrMarginModules, {pattern: payload});
     return {canvas: compositeCanvas, layout};
   }, []);
 

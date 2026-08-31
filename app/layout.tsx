@@ -2,8 +2,8 @@ import type {Metadata} from 'next';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'Dotvera-v2',
-  description: 'Next.js migration workspace for the Verify CDP generator and verifier.',
+  title: 'Dotvera-v3',
+  description: 'Verify CDP V3 workspace for the generator and verifier.',
 };
 
 /** Provides the root HTML shell for the Next.js migration app. */

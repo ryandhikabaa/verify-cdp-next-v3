@@ -2,6 +2,7 @@
 
 import {useEffect, useRef, useState} from 'react';
 import {BrowserQRCodeReader} from '@zxing/browser';
+import {BarcodeFormat, DecodeHintType} from '@zxing/library';
 import {
   RECT_PATTERN_COLUMNS,
   RECT_PATTERN_DOT_DENSITY,
@@ -15,6 +16,7 @@ import {
   getStaticMaskBit,
   normalizeCDPSettings,
 } from '@/lib/cdp';
+import {decodeV3Matrix} from '@/lib/cdp/v3-matrix';
 import {CDP_SPREAD_X, CDP_SPREAD_Y, CDP_TOTAL_BITS} from '@/lib/cdp/constants';
 import {API_BASE, VERIFY_ROI_RATIO} from '@/lib/app-constants';
 import {ApiClientError, fetchApi} from '@/lib/api-client';
@@ -27,7 +29,11 @@ type VerifyApiResult = {
   notes: string | null;
 };
 
-const qrCodeReader = new BrowserQRCodeReader();
+const qrHints = new Map<DecodeHintType, unknown>([
+  [DecodeHintType.POSSIBLE_FORMATS, [BarcodeFormat.QR_CODE]],
+  [DecodeHintType.TRY_HARDER, true],
+]);
+const qrCodeReader = new BrowserQRCodeReader(qrHints);
 type Point2D = {x: number; y: number};
 
 type QrDetectionPreview = {
@@ -86,7 +92,16 @@ const MIN_SCAN_SHARPNESS = 2.5;
 const MIN_SCAN_CONTRAST = 6;
 const MIN_STABLE_VALID_FRAMES = 1;
 const MAX_CHECKSUM_RECOVERY_FRAMES = 6; 
-const ENABLE_SCANNER_DEBUG = false;
+// Enable expensive crop previews only explicitly with `?debugCrop=1`.
+// Keeping this opt-in prevents debug image encoding from blocking normal scans.
+const ENABLE_SCANNER_DEBUG = typeof window !== 'undefined'
+  && new URLSearchParams(window.location.search).get('debugCrop') === '1';
+const MAX_SCAN_CANVAS_DIMENSION = 960;
+// The generator uses the locked `https://puragroup.com` QR payload with error
+// correction level M. Its QR model is version 2 (25 × 25 modules). Keep this
+// value explicit in the verifier so crop geometry does not depend on the QR
+// text or on an out-of-scope payload lookup.
+const V3_QR_MODULE_COUNT = 25;
 
 function calculateObjectCoverVisibleSource(video: HTMLVideoElement) {
   const rect = video.getBoundingClientRect();
@@ -278,29 +293,27 @@ function sampleParallelogramRegion(
   const ctx = canvas.getContext('2d');
   if (!ctx) return null;
 
-  const sourceCtx = sourceCanvas.getContext('2d', {willReadFrequently: true});
-  if (!sourceCtx) return null;
-
-  const sourceImage = sourceCtx.getImageData(0, 0, sourceCanvas.width, sourceCanvas.height);
-  const targetImage = ctx.createImageData(canvas.width, canvas.height);
-
-  for (let y = 0; y < canvas.height; y++) {
-    for (let x = 0; x < canvas.width; x++) {
-      const sampleX = origin.x + xAxis.x * (x + 0.5) + yAxis.x * (y + 0.5);
-      const sampleY = origin.y + xAxis.y * (x + 0.5) + yAxis.y * (y + 0.5);
-      const srcX = Math.max(0, Math.min(sourceCanvas.width - 1, Math.round(sampleX)));
-      const srcY = Math.max(0, Math.min(sourceCanvas.height - 1, Math.round(sampleY)));
-      const sourceIndex = (srcY * sourceCanvas.width + srcX) * 4;
-      const targetIndex = (y * canvas.width + x) * 4;
-
-      targetImage.data[targetIndex] = sourceImage.data[sourceIndex];
-      targetImage.data[targetIndex + 1] = sourceImage.data[sourceIndex + 1];
-      targetImage.data[targetIndex + 2] = sourceImage.data[sourceIndex + 2];
-      targetImage.data[targetIndex + 3] = sourceImage.data[sourceIndex + 3];
-    }
-  }
-
-  ctx.putImageData(targetImage, 0, 0);
+  // Let the browser's native canvas compositor perform the affine sampling.
+  // The previous implementation read the complete frame and copied every
+  // destination pixel in JavaScript; with a detected QR this ran several
+  // times per scan and blocked slider/input events on the main thread.
+  const determinant = xAxis.x * yAxis.y - xAxis.y * yAxis.x;
+  if (Math.abs(determinant) < 0.0001) return null;
+  const inverseA = yAxis.y / determinant;
+  const inverseB = -xAxis.y / determinant;
+  const inverseC = -yAxis.x / determinant;
+  const inverseD = xAxis.x / determinant;
+  ctx.imageSmoothingEnabled = false;
+  ctx.setTransform(
+    inverseA,
+    inverseB,
+    inverseC,
+    inverseD,
+    -inverseA * origin.x - inverseC * origin.y,
+    -inverseB * origin.x - inverseD * origin.y,
+  );
+  ctx.drawImage(sourceCanvas, 0, 0);
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
 
   return canvas;
 }
@@ -421,13 +434,106 @@ function decodeRectangularPatternCanvas(patternCanvas: HTMLCanvasElement): RectD
   };
 }
 
+function decodeV3PatternCanvas(patternCanvas: HTMLCanvasElement): RectDecodeResult {
+  const context = patternCanvas.getContext('2d', {willReadFrequently: true});
+  if (!context) throw new Error('V3 pattern canvas context unavailable.');
+  const pixels = context.getImageData(0, 0, patternCanvas.width, patternCanvas.height).data;
+  const matrix = Array.from({length: 64}, (_, row) => Array.from({length: 32}, (_, column) => {
+    const x = Math.min(patternCanvas.width - 1, Math.floor((column + 0.5) * patternCanvas.width / 32));
+    const y = Math.min(patternCanvas.height - 1, Math.floor((row + 0.5) * patternCanvas.height / 64));
+    const offset = (y * patternCanvas.width + x) * 4;
+    // V3 renderer uses matrix value 0 for a black carrier cell and 1 for a
+    // white cell. Preserve that convention when converting camera pixels;
+    // inverting it makes every sampled V3 bit wrong before mask/repetition
+    // decoding can run.
+    return (pixels[offset] + pixels[offset + 1] + pixels[offset + 2]) / 3 < 160 ? 0 : 1;
+  }));
+  const sampledCells = matrix.flat();
+  try {
+    const decoded = decodeV3Matrix(matrix);
+    return {text: decoded.payload, isValid: true, bitVotes: sampledCells, confidence: 1};
+  } catch {
+    // A geometrically valid crop is still useful for diagnostics and
+    // multi-frame processing even when this frame fails RS/CRC validation.
+    // Do not discard it and incorrectly make the UI report that no right-side
+    // pattern was cropped at all.
+    return {text: '', isValid: false, bitVotes: sampledCells, confidence: 0};
+  }
+}
+
 async function detectQrAnchoredPreview(sourceCanvas: HTMLCanvasElement): Promise<QrDetectionPreview | null> {
   try {
-    const qrResult = qrCodeReader.decodeFromCanvas(sourceCanvas);
+    // Mobile camera frames often contain a visually clear but relatively small
+    // QR. Give ZXing one native-resolution attempt and one enlarged attempt;
+    // this changes only the decoder input, not the camera preview or crop
+    // geometry. Avoid arbitrary image processing pipelines here because they
+    // can reduce the finder-pattern contrast.
+    let qrResult;
+    let qrResultScale = 1;
+    let qrResultOffset = {x: 0, y: 0};
+    const qrInputs: Array<{canvas: HTMLCanvasElement; scale: number; offset: Point2D}> = [
+      {canvas: sourceCanvas, scale: 1, offset: {x: 0, y: 0}},
+    ];
+
+    // The V3 contract places QR on the left and the dense rectangular pattern
+    // on the right. Do not ask the QR detector to classify both unrelated
+    // regions as one barcode image: the pattern can dominate binarization and
+    // make a perfectly readable QR fail detection. The left ROI is deliberately
+    // broad so it remains safe for perspective and framing variation. The QR
+    // itself can occupy roughly three quarters of the ROI in the physical V3
+    // layout; using a narrow crop here would cut its right finder/data modules
+    // before ZXing gets a chance to decode it.
+    const qrRegionCanvas = document.createElement('canvas');
+    const qrRegionWidth = Math.max(1, Math.round(sourceCanvas.width * 0.72));
+    qrRegionCanvas.width = qrRegionWidth;
+    qrRegionCanvas.height = sourceCanvas.height;
+    const qrRegionContext = qrRegionCanvas.getContext('2d');
+    if (qrRegionContext) {
+      qrRegionContext.drawImage(sourceCanvas, 0, 0, qrRegionWidth, sourceCanvas.height, 0, 0, qrRegionWidth, sourceCanvas.height);
+      qrInputs.push({canvas: qrRegionCanvas, scale: 1, offset: {x: 0, y: 0}});
+
+      // ZXing's QR reader is substantially more reliable when the input has a
+      // real white quiet zone. The generated V3 composition places the pattern
+      // close to the QR, so provide that quiet zone explicitly while retaining
+      // the original-coordinate offset for perspective calculations.
+      const quietZone = Math.max(8, Math.round(Math.min(qrRegionWidth, sourceCanvas.height) * 0.08));
+      const isolatedQrCanvas = document.createElement('canvas');
+      isolatedQrCanvas.width = qrRegionWidth + quietZone * 2;
+      isolatedQrCanvas.height = sourceCanvas.height + quietZone * 2;
+      const isolatedQrContext = isolatedQrCanvas.getContext('2d');
+      if (isolatedQrContext) {
+        isolatedQrContext.fillStyle = '#ffffff';
+        isolatedQrContext.fillRect(0, 0, isolatedQrCanvas.width, isolatedQrCanvas.height);
+        isolatedQrContext.drawImage(qrRegionCanvas, quietZone, quietZone);
+        qrInputs.push({canvas: isolatedQrCanvas, scale: 1, offset: {x: -quietZone, y: -quietZone}});
+      }
+
+      const enlargedQrCanvas = document.createElement('canvas');
+      enlargedQrCanvas.width = qrRegionWidth * 2;
+      enlargedQrCanvas.height = sourceCanvas.height * 2;
+      const enlargedQrContext = enlargedQrCanvas.getContext('2d');
+      if (enlargedQrContext) {
+        enlargedQrContext.imageSmoothingEnabled = false;
+        enlargedQrContext.drawImage(qrRegionCanvas, 0, 0, enlargedQrCanvas.width, enlargedQrCanvas.height);
+        qrInputs.push({canvas: enlargedQrCanvas, scale: 2, offset: {x: 0, y: 0}});
+      }
+    }
+
+    for (const input of qrInputs) {
+      try {
+        qrResult = qrCodeReader.decodeFromCanvas(input.canvas);
+        qrResultScale = input.scale;
+        qrResultOffset = input.offset;
+        break;
+      } catch {
+        // Try the next known-safe input representation.
+      }
+    }
+    if (!qrResult) return null;
     const resultPoints = qrResult.getResultPoints();
     if (!resultPoints || resultPoints.length < 3) return null;
 
-    const orderedPoints = orderQrPoints(resultPoints.slice(0, 3).map((point) => ({x: point.getX(), y: point.getY()})));
+    const orderedPoints = orderQrPoints(resultPoints.slice(0, 3).map((point) => ({x: point.getX() / qrResultScale + qrResultOffset.x, y: point.getY() / qrResultScale + qrResultOffset.y})));
     const qrXSpan = distanceBetween(orderedPoints.topLeft, orderedPoints.topRight);
     const qrYSpan = distanceBetween(orderedPoints.topLeft, orderedPoints.bottomLeft);
     const qrSize = Math.max(qrXSpan, qrYSpan);
@@ -458,6 +564,12 @@ async function detectQrAnchoredPreview(sourceCanvas: HTMLCanvasElement): Promise
     const qrWidth = normalizedQrSpan + qrPaddingX * 2;
     const qrHeight = normalizedQrSpan + qrPaddingY * 2;
 
+    // `qrHeight` is already the 25-module symbol height: ZXing finder centres
+    // are 18 modules apart and the 3.5-module expansion on both sides reaches
+    // the symbol edges, not the outer one-module quiet-zone edges. Applying
+    // 25/27 again here shrinks both pattern axes by 7.4%, clipping its right
+    // and bottom edges. The renderer makes the pattern exactly as tall as the
+    // QR symbol excluding its quiet zone, so use this height directly.
     const patternHeight = qrHeight;
     const patternWidth = patternHeight * (RECT_PATTERN_COLUMNS / RECT_PATTERN_ROWS);
     const expectedGap = Math.round(patternWidth * 0.075);
@@ -469,20 +581,105 @@ async function detectQrAnchoredPreview(sourceCanvas: HTMLCanvasElement): Promise
       Math.round(expectedGap + moduleSize * 1.5),
     ])).filter((value) => value > 0);
 
-    const qrCanvas = sampleParallelogramRegion(
-      sourceCanvas,
-      qrOrigin,
-      scalePoint(xUnit, qrWidth / Math.max(1, Math.round(qrWidth))),
-      scalePoint(yUnit, qrHeight / Math.max(1, Math.round(qrHeight))),
-      qrWidth,
-      qrHeight,
-    );
-    if (!qrCanvas) return null;
+    // The QR crop is only needed for optional diagnostics. Avoid resampling a
+    // second large region on every frame during normal scanning.
+    const qrCanvas = ENABLE_SCANNER_DEBUG
+      ? sampleParallelogramRegion(
+        sourceCanvas,
+        qrOrigin,
+        scalePoint(xUnit, qrWidth / Math.max(1, Math.round(qrWidth))),
+        scalePoint(yUnit, qrHeight / Math.max(1, Math.round(qrHeight))),
+        qrWidth,
+        qrHeight,
+      )
+      : null;
 
-    // Finder points provide an approximate anchor, but a sub-cell error can
-    // corrupt a 32x64 decode. Try nearby positions and let the pattern checksum
-    // select the candidate; the QR content is never used as payload.
-    const decodeAnchoredPattern = (estimatedOrigin: Point2D) => {
+    // V3 has exactly one pattern, anchored to the right of the QR. Keep the
+    // legacy two-sided search below isolated for old samples only.
+    // `qrOrigin + qrWidth` is the right edge of the 25-module QR symbol. The
+    // generated canvas then has one quiet-zone module plus one explicit layout
+    // gap module before the pattern starts.
+    const v3GapPx = Math.max(1, Math.round(moduleSize * 2));
+    const v3OffsetCandidates = [0, -0.5, 0.5, -1, 1].map((offset) =>
+      addPoint(qrOrigin, addPoint(scalePoint(xUnit, qrWidth + v3GapPx + moduleSize * offset), scalePoint(yUnit, 0))),
+    );
+    let primaryV3Preview: QrDetectionPreview | null = null;
+    for (const [candidateIndex, v3PatternOrigin] of v3OffsetCandidates.entries()) {
+      const v3PatternCanvas = sampleParallelogramRegion(
+        sourceCanvas,
+        v3PatternOrigin,
+        scalePoint(xUnit, patternWidth / Math.max(1, Math.round(patternWidth))),
+        scalePoint(yUnit, patternHeight / Math.max(1, Math.round(patternHeight))),
+        patternWidth,
+        patternHeight,
+      );
+      if (!v3PatternCanvas) continue;
+      try {
+        const v3Decode = decodeV3PatternCanvas(v3PatternCanvas);
+        const qrCornerTopRight = addPoint(qrOrigin, scalePoint(xUnit, qrWidth));
+        const qrCornerBottomLeft = addPoint(qrOrigin, scalePoint(yUnit, qrHeight));
+        const qrCornerBottomRight = addPoint(qrCornerTopRight, scalePoint(yUnit, qrHeight));
+        const preview = {
+          qrDetected: true, qrValue: qrResult.getText()?.trim() || null,
+          qrFormat: qrResult.getBarcodeFormat()?.toString() || 'QR_CODE',
+          qrBounds: {topLeft: qrOrigin, topRight: qrCornerTopRight, bottomLeft: qrCornerBottomLeft, bottomRight: qrCornerBottomRight, width: Math.round(qrWidth), height: Math.round(qrHeight)},
+          patternCropBounds: {layout: 'v3-qr-pattern', right: buildPatternBounds(v3PatternOrigin, xUnit, yUnit, patternWidth, patternHeight)},
+          qrDataUrl: ENABLE_SCANNER_DEBUG ? qrCanvas?.toDataURL('image/png') ?? null : null,
+          patternDataUrl: ENABLE_SCANNER_DEBUG ? v3PatternCanvas.toDataURL('image/png') : null,
+          leftPatternDataUrl: null, rightPatternDataUrl: ENABLE_SCANNER_DEBUG ? v3PatternCanvas.toDataURL('image/png') : null,
+          compositeDataUrl: null, patternCellBits: v3Decode.bitVotes, patternCellConfidence: v3Decode.confidence,
+          patternPayloadText: v3Decode.text, patternPayloadValid: v3Decode.isValid,
+          leftPatternCellBits: null, leftPatternPayloadText: null, leftPatternPayloadValid: false,
+          rightPatternCellBits: v3Decode.bitVotes, rightPatternPayloadText: v3Decode.text, rightPatternPayloadValid: v3Decode.isValid,
+        };
+        if (candidateIndex === 0) primaryV3Preview = preview;
+        // The first geometry is the renderer's exact geometry. Only pay for
+        // bounded correction offsets when the exact crop fails validation.
+        if (v3Decode.isValid) return preview;
+      } catch { /* Try the next bounded V3 anchor candidate. */ }
+    }
+
+    // If no correction candidate passes V3 validation, expose the exact
+    // renderer-derived geometry—not the final (+1 module) search candidate.
+    // Returning the last candidate made debug crops consistently shift right
+    // and clip the pattern's left edge.
+    if (primaryV3Preview) return primaryV3Preview;
+
+    // QR detection and pattern decoding are separate stages. A valid QR anchor
+    // must remain visible in diagnostics even when the estimated pattern crop
+    // is outside the frame or does not pass V3 validation; otherwise every crop
+    // error is incorrectly reported as "QR belum terdeteksi".
+    return {
+      qrDetected: true,
+      qrValue: qrResult.getText()?.trim() || null,
+      qrFormat: qrResult.getBarcodeFormat()?.toString() || 'QR_CODE',
+      qrBounds: {
+        topLeft: qrOrigin,
+        topRight: addPoint(qrOrigin, scalePoint(xUnit, qrWidth)),
+        bottomLeft: addPoint(qrOrigin, scalePoint(yUnit, qrHeight)),
+        bottomRight: addPoint(addPoint(qrOrigin, scalePoint(xUnit, qrWidth)), scalePoint(yUnit, qrHeight)),
+        width: Math.round(qrWidth),
+        height: Math.round(qrHeight),
+      },
+      patternCropBounds: null,
+      qrDataUrl: ENABLE_SCANNER_DEBUG ? qrCanvas?.toDataURL('image/png') ?? null : null,
+      patternDataUrl: null,
+      leftPatternDataUrl: null,
+      rightPatternDataUrl: null,
+      compositeDataUrl: null,
+      patternCellBits: null,
+      patternCellConfidence: null,
+      patternPayloadText: null,
+      patternPayloadValid: false,
+      leftPatternCellBits: null,
+      leftPatternPayloadText: null,
+      leftPatternPayloadValid: false,
+      rightPatternCellBits: null,
+      rightPatternPayloadText: null,
+      rightPatternPayloadValid: false,
+    };
+
+    /* const decodeAnchoredPattern = (estimatedOrigin: Point2D) => {
       const offsetCandidates = [
         {x: 0, y: 0},
         {x: -0.75, y: 0},
@@ -619,7 +816,7 @@ async function detectQrAnchoredPreview(sourceCanvas: HTMLCanvasElement): Promise
         left: buildPatternBounds(leftPattern.origin, xUnit, yUnit, patternWidth, patternHeight),
         right: buildPatternBounds(rightPattern.origin, xUnit, yUnit, patternWidth, patternHeight),
       },
-      qrDataUrl: ENABLE_SCANNER_DEBUG ? qrCanvas.toDataURL('image/png') : null,
+      qrDataUrl: ENABLE_SCANNER_DEBUG ? qrCanvas?.toDataURL('image/png') ?? null : null,
       patternDataUrl: ENABLE_SCANNER_DEBUG ? compositeCanvas?.toDataURL('image/png') ?? null : null,
       leftPatternDataUrl: ENABLE_SCANNER_DEBUG ? leftPattern.canvas.toDataURL('image/png') : null,
       rightPatternDataUrl: ENABLE_SCANNER_DEBUG ? rightPattern.canvas.toDataURL('image/png') : null,
@@ -634,7 +831,7 @@ async function detectQrAnchoredPreview(sourceCanvas: HTMLCanvasElement): Promise
       rightPatternCellBits: rightPattern.decode.bitVotes,
       rightPatternPayloadText: rightPayloadText,
       rightPatternPayloadValid: rightPattern.decode.isValid,
-    };
+    }; */
   } catch (error) {
     console.warn('QR detection preview gagal diproses dengan ZXing.', error);
     return null;
@@ -652,6 +849,9 @@ export function useVerifyScanner() {
   const cameraSessionRef = useRef(0);
   const scanGenerationRef = useRef(0);
   const scanLockRef = useRef(false);
+  const zoomRequestRef = useRef<{track: MediaStreamTrack; value: number} | null>(null);
+  const zoomApplyLockRef = useRef(false);
+  const zoomBusyUntilRef = useRef(0);
   const previousMatchResultRef = useRef(false);
   const stableFrameRef = useRef<{id: string; count: number; voteHistory: number[][]}>({id: '', count: 0, voteHistory: []});
   const sidePayloadCacheRef = useRef<{
@@ -676,7 +876,7 @@ export function useVerifyScanner() {
     status: VerifyStatus;
     checksumValid?: boolean;
     decodedLookupId?: string;
-    verdictSource?: 'qr-anchor-v1' | 'qr-anchor-v2.1' | 'legacy-payload';
+    verdictSource?: 'qr-anchor-v1' | 'qr-anchor-v2.1' | 'qr-anchor-v3' | 'legacy-payload';
     qrDetected?: boolean;
     qrValue?: string | null;
     qrFormat?: string | null;
@@ -746,6 +946,10 @@ export function useVerifyScanner() {
     let scanInterval: ReturnType<typeof setInterval>;
     if (scanMode === 'auto' && cameraReady && !matchResult && patternLibrary.docsList.length > 0 && !errorMsg) {
       scanInterval = setInterval(() => {
+        // Camera drivers can briefly block the main thread while applying a
+        // hardware zoom. Do not compete with that operation by starting a
+        // synchronous QR/pattern decode at the same time.
+        if (Date.now() < zoomBusyUntilRef.current || zoomApplyLockRef.current) return;
         void handleScan();
       }, 850);
     }
@@ -878,6 +1082,7 @@ export function useVerifyScanner() {
   const stopCamera = (updateState = true) => {
     cameraSessionRef.current++;
     scanGenerationRef.current++;
+    zoomRequestRef.current = null;
     if (streamRef.current) {
       streamRef.current.getTracks().forEach((track) => track.stop());
       streamRef.current = null;
@@ -899,11 +1104,30 @@ export function useVerifyScanner() {
     const clampedZoom = Math.min(zoomRange.max, Math.max(zoomRange.min, nextZoom));
     const roundedZoom = Math.round(clampedZoom / zoomRange.step) * zoomRange.step;
     const track = streamRef.current.getVideoTracks()[0];
+    zoomRequestRef.current = {track, value: roundedZoom};
+    // Pause decoding for the complete interaction window. This is important
+    // on mobile browsers where applyConstraints() and canvas/ZXing work share
+    // the camera thread and can otherwise make the page appear frozen.
+    zoomBusyUntilRef.current = Date.now() + 900;
+    setCameraZoom(roundedZoom);
+    if (zoomApplyLockRef.current) return;
+
+    zoomApplyLockRef.current = true;
     try {
-      await track.applyConstraints({advanced: [{zoom: roundedZoom} as any]});
-      setCameraZoom(roundedZoom);
-    } catch (error) {
-      console.error('Failed to change camera zoom:', error);
+      while (zoomRequestRef.current) {
+        const request = zoomRequestRef.current;
+        zoomRequestRef.current = null;
+        zoomBusyUntilRef.current = 0;
+        try {
+          await track.applyConstraints({advanced: [{zoom: request.value} as any]});
+        } catch (error) {
+          // A rapid slider interaction can invalidate an intermediate request;
+          // keep the UI responsive and let the newest request win.
+          if (zoomRequestRef.current === null) console.warn('Failed to change camera zoom:', error);
+        }
+      }
+    } finally {
+      zoomApplyLockRef.current = false;
     }
   };
 
@@ -966,8 +1190,9 @@ export function useVerifyScanner() {
       const startY = Math.max(0, visibleSource.y + (visibleSource.height - captureHeight) / 2);
 
       const rawScanCanvas = document.createElement('canvas');
-      rawScanCanvas.width = Math.max(1, Math.round(captureWidth));
-      rawScanCanvas.height = Math.max(1, Math.round(captureHeight));
+      const captureScale = Math.min(1, MAX_SCAN_CANVAS_DIMENSION / Math.max(captureWidth, captureHeight));
+      rawScanCanvas.width = Math.max(1, Math.round(captureWidth * captureScale));
+      rawScanCanvas.height = Math.max(1, Math.round(captureHeight * captureScale));
       const rawScanCtx = rawScanCanvas.getContext('2d', {willReadFrequently: true});
       if (!rawScanCtx) return;
       rawScanCtx.drawImage(video, startX, startY, captureWidth, captureHeight, 0, 0, rawScanCanvas.width, rawScanCanvas.height);
@@ -1170,6 +1395,10 @@ export function useVerifyScanner() {
 
       const lookupId = rectPayloadText;
       const rawPayloadText = rectPayloadText;
+      // V3 payloads are validated by the matrix codec (RS + CRC) before this
+      // point. The V3 layout carries a single pattern, so the legacy left/right
+      // chunk fields are submitted empty and the API contract switches on
+      // layout_version instead.
       const payloadMode = 'three-part' as const;
       const decryptSucceeded = false;
       setScannerMessage('Kode berhasil dibaca. Memeriksa keaslian...');
@@ -1198,13 +1427,13 @@ export function useVerifyScanner() {
           qr_detected: qrPreview?.qrDetected ?? false,
           qr_bounds: qrPreview?.qrBounds ?? null,
           pattern_crop_bounds: qrPreview?.patternCropBounds ?? null,
-          layout_version: 'three-part-v2.1',
-          left_pattern_decode_payload: leftPayloadText,
-          right_pattern_decode_payload: rightPayloadText,
+          layout_version: 'v3-qr-pattern',
+          left_pattern_decode_payload: '',
+          right_pattern_decode_payload: '',
           pattern_decode_payload: rawPayloadText,
           decrypt_succeeded: decryptSucceeded,
           payload_mode: payloadMode,
-          checksum_valid: Boolean(leftPayloadText && rightPayloadText),
+          checksum_valid: Boolean(rawPayloadText),
           raw_payload_text: rawPayloadText,
           created_at: verifiedAt,
           updated_at: verifiedAt,
@@ -1224,7 +1453,7 @@ export function useVerifyScanner() {
         status,
         checksumValid: frameForLookup.isValid,
         decodedLookupId: lookupId,
-        verdictSource: qrPreview?.qrDetected ? 'qr-anchor-v2.1' : 'legacy-payload',
+        verdictSource: qrPreview?.qrDetected ? 'qr-anchor-v3' : 'legacy-payload',
         qrDetected: qrPreview?.qrDetected ?? false,
         qrValue: qrPreview?.qrValue ?? null,
         qrFormat: qrPreview?.qrFormat ?? null,

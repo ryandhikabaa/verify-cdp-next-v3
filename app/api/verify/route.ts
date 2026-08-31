@@ -31,6 +31,7 @@ const MAX_IMAGE_DATA_LENGTH = 5_000_000;
 const DEVICE_ID_MAX_LENGTH = 255;
 const LABEL_MAX_LENGTH = 255;
 const THREE_PART_V21_LAYOUT = 'three-part-v2.1';
+const V3_QR_PATTERN_LAYOUT = 'v3-qr-pattern';
 const CDP_PAYLOAD_CHUNK_PATTERN = /^[A-Z0-9]{12}$/;
 function normalizeTimestamp(value: unknown) {
   if (typeof value !== 'string' || !value.trim()) return null;
@@ -100,11 +101,23 @@ export async function POST(request: NextRequest) {
   }
 
   const isThreePartV21 = layoutVersion === THREE_PART_V21_LAYOUT;
+  const isV3QrPattern = layoutVersion === V3_QR_PATTERN_LAYOUT;
   let incomingId: string;
   let decryptSucceeded: boolean;
   let payloadMode: 'legacy' | 'encrypted' | 'three-part' | 'unknown';
 
-  if (isThreePartV21) {
+  if (isV3QrPattern) {
+    // V3 payload validation already happened end-to-end on the client through
+    // the matrix codec (version byte, alphabet, length, CRC-16, Reed–Solomon).
+    // The server only performs consistent structural checks before lookup.
+    const v3Payload = patternDecodePayload;
+    if (!v3Payload || v3Payload.length > 24 || !/^[A-Za-z0-9_-]{1,24}$/.test(v3Payload)) {
+      return apiError({status: 400, message: 'Payload V3 harus 1-24 karakter A-Z, a-z, 0-9, tanda hubung, atau garis bawah.'});
+    }
+    incomingId = v3Payload;
+    decryptSucceeded = false;
+    payloadMode = 'three-part';
+  } else if (isThreePartV21) {
     if (!CDP_PAYLOAD_CHUNK_PATTERN.test(leftPatternDecodePayload) || !CDP_PAYLOAD_CHUNK_PATTERN.test(rightPatternDecodePayload)) {
       return apiError({status: 400, message: 'Payload CDP kiri dan kanan harus masing-masing 12 karakter A-Z atau 0-9.'});
     }
@@ -175,16 +188,19 @@ export async function POST(request: NextRequest) {
     );
 
     const pattern = patternResult.rows[0] ?? null;
-    const finalStatus = isThreePartV21
+    // V3 and v2.1 resolve status directly from the serial lookup; the shared
+    // helper's payloadMode type only covers the legacy/encrypted tracking path.
+    const isStructuredLayout = isThreePartV21 || isV3QrPattern;
+    const finalStatus = isStructuredLayout
       ? (pattern ? 'AUTHENTIC' : 'COUNTERFEIT')
       : resolveSharedVerifyStatus({
           patternFound: Boolean(pattern),
-          payloadMode,
+          payloadMode: payloadMode === 'three-part' ? 'unknown' : payloadMode,
           decryptSucceeded,
           checksumValid,
           rawPayloadText,
         });
-    const notes = isThreePartV21
+    const notes = isStructuredLayout
       ? pattern
         ? 'Produk berhasil diverifikasi dan dinyatakan autentik.'
         : 'Keaslian produk tidak dapat dikonfirmasi.'
@@ -192,7 +208,7 @@ export async function POST(request: NextRequest) {
           patternFound: Boolean(pattern),
           decryptSucceeded,
           checksumValid,
-          payloadMode,
+          payloadMode: payloadMode === 'three-part' ? 'unknown' : payloadMode,
           rawPayloadText,
         });
 
