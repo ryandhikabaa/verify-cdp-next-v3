@@ -22,3 +22,17 @@ export {calculateSimilarity} from './similarity';
 export {decodeV3Payload, encodeV3Payload, validateV3Payload, V3_PAYLOAD_CONSTANTS} from './v3-payload';
 export type {V3DecodedPayload, V3PayloadCodeword} from './v3-payload';
 export {V3_MATRIX_BITS, V3_MATRIX_COLUMNS, V3_MATRIX_ROWS, corruptV3Matrix, decodeV3Matrix, generateV3Matrix} from './v3-matrix';
+export {
+	distanceBetween,
+	normalizeVector,
+	orthogonalizeYAxis,
+	addPoint,
+	scalePoint,
+	orderQrPoints,
+	buildPatternBounds,
+	sampleParallelogramRegion,
+	decodeV3PatternCanvas,
+	getV3PatternOffsetCandidates,
+	computeV3PatternOrigins,
+} from './v3-web-decoder';
+export type {Point2D, RectDecodeResult} from './v3-web-decoder';
