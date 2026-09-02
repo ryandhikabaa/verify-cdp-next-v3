@@ -233,7 +233,7 @@ Capture current frame
 → determine QR orientation and scale
 → calculate fixed right-pattern bounds
 → crop one pattern
-→ normalize one pattern
+→ normalize one patter
 → decode payload
 → validate checksum
 ```
@@ -274,7 +274,7 @@ Required behavior:
 - Manual zoom only when supported and responsive.
 - Serial frame processing with backpressure.
 - Cancellation/session guard for stale async work.
-- Cleanup on unmount, retry, and camera lifecycle changes.
+- Cleanup on unmount, retry, and camera lifecycle changes.r
 
 Performance rules:
 

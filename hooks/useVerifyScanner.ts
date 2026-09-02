@@ -84,6 +84,14 @@ const ENABLE_SCANNER_DEBUG = typeof window !== 'undefined'
   && new URLSearchParams(window.location.search).get('debugCrop') === '1';
 const MAX_SCAN_CANVAS_DIMENSION = 960;
 
+// Fixed scan cadence. Reverted from an adaptive 300/500ms scheme: the decode
+// pipeline (ZXing across several input variants plus anchored pattern crops)
+// saturates the main thread when fired every 300ms, which starves the camera
+// pipeline of compositing time and makes frames arrive stale/soft — net
+// slower and less reliable than a relaxed cadence. 700ms keeps scanning
+// responsive while leaving decode headroom on low-end phones.
+const SCAN_INTERVAL_MS = 700;
+
 function calculateObjectCoverVisibleSource(video: HTMLVideoElement) {
   const rect = video.getBoundingClientRect();
   const displayWidth = Math.max(1, rect.width);
@@ -269,10 +277,31 @@ function computeOtsuThreshold(cellMeans: number[]) {
 }
 
 function decodeV3PatternCanvas(patternCanvas: HTMLCanvasElement): RectDecodeResult {
-  const context = patternCanvas.getContext('2d', {willReadFrequently: true});
+  // Small prints: when the anchored crop leaves fewer than ~4 px per row
+  // cell, per-cell sampling fights sensor noise on every cell and Otsu has
+  // almost no separation left to work with. Upscale nearest-neighbour first:
+  // it replicates pixels without inventing intermediate greys, so cell edges
+  // stay hard and the threshold search keeps its contrast. Larger crops skip
+  // this entirely.
+  const MIN_CELL_PX = 4;
+  const cellHeightPx = patternCanvas.height / RECT_PATTERN_ROWS;
+  let workCanvas = patternCanvas;
+  if (cellHeightPx > 0 && cellHeightPx < MIN_CELL_PX) {
+    const upscaleScale = Math.min(4, MIN_CELL_PX / cellHeightPx);
+    const upscaleCanvas = document.createElement('canvas');
+    upscaleCanvas.width = Math.max(1, Math.round(patternCanvas.width * upscaleScale));
+    upscaleCanvas.height = Math.max(1, Math.round(patternCanvas.height * upscaleScale));
+    const upscaleContext = upscaleCanvas.getContext('2d', {willReadFrequently: true});
+    if (upscaleContext) {
+      upscaleContext.imageSmoothingEnabled = false;
+      upscaleContext.drawImage(patternCanvas, 0, 0, upscaleCanvas.width, upscaleCanvas.height);
+      workCanvas = upscaleCanvas;
+    }
+  }
+  const context = workCanvas.getContext('2d', {willReadFrequently: true});
   if (!context) throw new Error('V3 pattern canvas context unavailable.');
-  const width = patternCanvas.width;
-  const height = patternCanvas.height;
+  const width = workCanvas.width;
+  const height = workCanvas.height;
   const pixels = context.getImageData(0, 0, width, height).data;
 
   // Sample a centered window inside each carrier cell instead of a single
@@ -304,7 +333,9 @@ function decodeV3PatternCanvas(patternCanvas: HTMLCanvasElement): RectDecodeResu
 
   // A fixed 160 cut fails as soon as lighting is uneven across the print
   // (shadow, glare, warm indoor light). Otsu adapts to each frame's own
-  // black/white distribution; bounded retries cover borderline splits.
+  // black/white distribution; small prints straddle the cut, so walk a
+  // symmetric ±15/±30 band outward from Otsu (worst case five decodes, and
+  // only when earlier cuts fail validation).
   const otsu = computeOtsuThreshold(cellMeans);
   let confidenceSum = 0;
   for (const mean of cellMeans) confidenceSum += Math.min(1, Math.abs(mean - otsu) / 96);
@@ -319,7 +350,7 @@ function decodeV3PatternCanvas(patternCanvas: HTMLCanvasElement): RectDecodeResu
       const mean = cellMeans[row * 32 + column];
       return (mean <= threshold ? 0 : 1) as 0 | 1;
     }));
-  for (const threshold of [otsu, otsu - 20, otsu + 20]) {
+  for (const threshold of [otsu, otsu - 15, otsu + 15, otsu - 30, otsu + 30]) {
     const matrix = buildMatrix(threshold);
     const sampledCells = matrix.flat();
     try {
@@ -464,13 +495,27 @@ async function detectQrAnchoredPreview(sourceCanvas: HTMLCanvasElement): Promise
     // legacy two-sided search below isolated for old samples only.
     // `qrOrigin + qrWidth` is the right edge of the 25-module QR symbol. The
     // generated canvas then has one quiet-zone module plus one explicit layout
-    // gap module before the pattern starts.
+    // gap module before the pattern starts. Search bounded corrections on
+    // both axes — half-module shifts first, then full modules, then diagonal
+    // combinations — because perspective and finder-center estimation also
+    // misplace the pattern vertically, not only horizontally. Each candidate
+    // costs a crop+decode only when every earlier candidate failed, so the
+    // success path still decodes exactly once.
     const v3GapPx = Math.max(1, Math.round(moduleSize * 2));
-    const v3OffsetCandidates = [0, -0.5, 0.5, -1, 1].map((offset) =>
-      addPoint(qrOrigin, addPoint(scalePoint(xUnit, qrWidth + v3GapPx + moduleSize * offset), scalePoint(yUnit, 0))),
+    const v3OffsetCandidates: Array<{dx: number; dy: number}> = [
+      {dx: 0, dy: 0},
+      {dx: -0.5, dy: 0}, {dx: 0.5, dy: 0}, {dx: 0, dy: -0.5}, {dx: 0, dy: 0.5},
+      {dx: -0.5, dy: -0.5}, {dx: 0.5, dy: -0.5}, {dx: -0.5, dy: 0.5}, {dx: 0.5, dy: 0.5},
+      {dx: -1, dy: 0}, {dx: 1, dy: 0}, {dx: 0, dy: -1}, {dx: 0, dy: 1},
+    ];
+    const v3Origins = v3OffsetCandidates.map(({dx, dy}) =>
+      addPoint(
+        addPoint(qrOrigin, scalePoint(xUnit, qrWidth + v3GapPx + moduleSize * dx)),
+        scalePoint(yUnit, moduleSize * dy),
+      ),
     );
     let primaryV3Preview: QrDetectionPreview | null = null;
-    for (const [candidateIndex, v3PatternOrigin] of v3OffsetCandidates.entries()) {
+    for (const [candidateIndex, v3PatternOrigin] of v3Origins.entries()) {
       const v3PatternCanvas = sampleParallelogramRegion(
         sourceCanvas,
         v3PatternOrigin,
@@ -619,7 +664,7 @@ export function useVerifyScanner() {
         // synchronous QR/pattern decode at the same time.
         if (Date.now() < zoomBusyUntilRef.current || zoomApplyLockRef.current) return;
         void handleScan();
-      }, 850);
+      }, SCAN_INTERVAL_MS);
     }
     return () => clearInterval(scanInterval);
   }, [scanMode, cameraReady, matchResult, errorMsg, patternLibrary.docsList.length]);
@@ -1004,7 +1049,6 @@ export function useVerifyScanner() {
       if (!currentBitVotes) {
         return;
       }
-
       // Single-frame verdict only: the current frame either decodes (RS + CRC
       // + repetition inside the codec) or it does not. No cross-frame pooling
       // — a decoded payload is submitted immediately.
