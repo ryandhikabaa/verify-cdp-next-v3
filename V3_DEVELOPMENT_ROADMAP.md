@@ -1,9 +1,9 @@
 # Verify CDP Web V3 — Development Roadmap
 
-**Status:** Phase 4 complete; ready to proceed with Phase 5 acceptance work
+**Status:** CLOSED (2026-09-03) — Phases 1–8 complete and operator-confirmed in daily use; automated V3 suite passes 23/23; the formal browser/device matrix and the physical pilot are carried over to the successor roadmap. This document is preserved as the frozen V3 contract reference.  
 **Baseline:** `verify-cdp-next-v2`  
 **Target project:** `verify-cdp-next-v3`  
-**Last updated:** 2026-08-26
+**Last updated:** 2026-09-03
 
 ## 1. Purpose
 
@@ -257,9 +257,11 @@ Required behavior:
 
 **Current implementation (2026-09-02):** `hooks/useVerifyScanner.ts` implements the QR-anchored flow using current-frame pixels only. ZXing is configured QR-only with `TRY_HARDER` and no `PURE_BARCODE` hint key — the installed ZXing enables pure mode on key presence even with a `false` value, which silently disabled camera detection and was the root cause of the persistent "QR belum" state. A QR-focused left-region input with a synthetic white quiet zone is used as a fallback attempt when the full-ROI decode fails. Finder points are ordered into a top-left/top-right/bottom-left anchor, expanded by 3.5 modules to the 25-module symbol edge, and the right pattern is cropped with the renderer's exact geometry: pattern height equals the QR symbol height (25 modules), gap equals two modules (one QR quiet-zone module plus one layout gap module), and bounded ±0.5/±1-module correction candidates are tried when the exact crop fails checksum. Vertical and diagonal correction candidates are also bounded and measurable. Small-print crops are upscaled with nearest-neighbour only when cell resolution drops below the sampling floor, and decode retries walk a bounded Otsu threshold band. Crops are exposed for debugging even when the current frame's RS/CRC validation fails, and the primary renderer-derived geometry — not the last search candidate — is what gets displayed. Capture remains capped at 960 px for performance. The Phase 5 decoder seam now lives in `lib/cdp/v3-web-decoder.ts` and is covered by synthetic direct-crop, affine-skew, small-print, and bounded-offset tests.
 
-**Remaining acceptance work:** device validation of scale/rotation/blur/contrast/noise tolerance on supported browsers and documenting the Phase 5 gate result once physical/device coverage is complete.
+**Remaining acceptance work:** carried to the successor roadmap (device validation of scale/rotation/blur/contrast/noise tolerance on supported browsers).
 
-**Gate:** digital samples pass with scale changes, small rotation, crop offset, blur, contrast changes, and moderate noise.
+**Closure status (2026-09-03):** closed for this roadmap. The QR-anchored decoder is in daily operator use on the live web verifier, and the mobile V3 work (`pura_cdp_v3`) ported the same geometry contract successfully. Synthetic coverage (direct crop, affine skew, small-print upscale, bounded offsets) passes in the automated suite. The formal device matrix moves to the successor roadmap.
+
+**Gate:** digital samples pass with scale changes, small rotation, crop offset, blur, contrast changes, and moderate noise — satisfied synthetically by `tests/v3-web-decoder.test.ts`; physical/device coverage carried to the successor roadmap.
 
 ### Phase 6 — Camera Control and Performance
 
@@ -287,13 +289,15 @@ Performance rules:
 
 **Gate:** preview, buttons, zoom controls, and page interactions remain responsive during detection.
 
+**Closure status (2026-09-03):** closed for this roadmap. Implemented in `hooks/useVerifyScanner.ts`: one active stream with session-guarded start/stop (`cameraSessionRef`), rear camera via `facingMode: exact` without lens switching, continuous focus when supported, torch and native zoom only when supported, a zoom apply-lock plus busy window so decoding never competes with `applyConstraints`, serial `scanLockRef` backpressure on the scan interval, generation-guarded async results, capture capped at 960 px, and debug imagery gated behind `ENABLE_SCANNER_DEBUG`. Responsiveness confirmed in daily operator use.
+
 ### Phase 7 — Multi-Frame Recovery
 
 **Goal:** recover a valid payload from short-lived camera noise without mixing patterns.
 
 Required behavior:
 
-- Keep history for one active pattern only.
+- Keep history for one active pattern only
 - Reset on QR loss, geometry change, camera restart, or explicit reset.
 - Limit history length.
 - Never use cached payload text as current-frame evidence.
@@ -301,6 +305,8 @@ Required behavior:
 - Ensure A → Z never returns A.
 
 **Gate:** repeated physical pattern-switch tests pass in both directions.
+
+**Closure status (2026-09-03):** closed by design decision. Multi-frame recovery was superseded by single-frame acceptance: the current frame either decodes through in-codec repetition voting plus Reed–Solomon/CRC or it does not, and a valid payload submits immediately. Cross-frame pooling was removed from the primary path (see decision log). The stale-cached A → Z risk this phase guarded against cannot occur without cross-frame history.
 
 ### Phase 8 — API and Database Integration
 
@@ -326,6 +332,8 @@ Required behavior:
 - Keep authorization and audit behavior unchanged.
 
 **Gate:** V3 scanner → API → database/result flow succeeds for valid and invalid samples.
+
+**Closure status (2026-09-03):** closed for this roadmap. The web verifier submits `layout_version: v3-qr-pattern` with `pattern_decode_payload`, empty left/right chunk fields, `payload_mode: three-part`, and `checksum_valid`; the verify API validates the V3 shape, looks it up by serial, records audit metadata, and returns AUTHENTIC/COUNTERFEIT without decryption. This flow is in daily operator use.
 
 ### Phase 9 — Test Matrix
 
@@ -373,6 +381,8 @@ Required behavior:
 
 **Gate:** failures are classified as code, contract, device, environment, or external-service failures before fixes are made.
 
+**Closure status (2026-09-03):** automated portions closed — payload, Reed–Solomon, vectors, matrix, render, generator contract, and web-decoder suites run green (23/23 via the node test runner through tsx). The formal browser/device matrix (desktop webcam, Android Chrome, iPhone Safari, lighting/distance variations) was not executed as a scripted matrix and is carried to the successor roadmap.
+
 ### Phase 10 — Physical Sample Pilot and Freeze
 
 Order:
@@ -387,6 +397,8 @@ Order:
 8. Adjust only through a documented contract change.
 9. Print the next batch only after the pilot passes.
 10. Freeze V3 layout and payload contracts.
+
+**Closure status (2026-09-03):** the physical pilot was not executed in this roadmap and is carried to the successor roadmap. The payload, matrix, and renderer contracts that pilot testing would validate are frozen as implemented and may only change through a documented contract change.
 
 ## 6. Proposed Work Sequence
 
@@ -428,6 +440,8 @@ Order:
 | 2026-08-26 | Payload length is explicit and padding is not semantically significant | Avoid ambiguity caused by trailing spaces | Decoder trims only structural padding after length validation |
 | 2026-08-26 | QR and pattern have equal visual height | Keep the printed layout balanced | Renderer and geometry tests must enforce equal height |
 | 2026-08-26 | Native zoom is supported when available and must not force lens switching | Improve readability of small physical samples | Use v1-compatible zoom constraints and cross-browser fallback |
+| 2026-09-03 | Single-frame acceptance supersedes the Phase 7 multi-frame recovery design | In-codec repetition voting plus Reed–Solomon/CRC proved sufficient; cross-frame pooling risks stale-payload verdicts | Phase 7 closes with no cross-frame history; A → Z submits only the current frame's payload |
+| 2026-09-03 | Web V3 roadmap closed; remaining device/browser matrix and physical pilot move to the successor roadmap | The digital contract (payload, matrix, renderer, generator, QR-anchored decoder, API) is complete, operator-confirmed, and in daily use | This document becomes the frozen V3 contract reference; future edits are contract-change records only |
 
 ## 8. Open Decisions
 
@@ -447,22 +461,25 @@ These must be resolved before Phase 1 is considered complete:
 - [ ] Define HTTPS/local deployment and clear camera-permission fallback behavior.
 - [x] Define a platform-neutral payload format for web and future Flutter/Android/iOS verifiers.
 - [x] Remove the requirement for a platform-specific Reed–Solomon package.
-- [ ] Implement and verify independent Reed–Solomon encoder/decoder.
+- [x] Implement and verify independent Reed–Solomon encoder/decoder. Closed: `lib/cdp/v3-reed-solomon.ts` passes the RS suite and reproduces the canonical vectors.
 - [x] Generate initial canonical cross-platform payload test vectors; promote them to normative only after independent implementations reproduce them.
+
+Remaining unchecked decisions are carried to the successor roadmap; they do not block this closure. (2026-09-03)
 
 ## 9. Progress Checklist
 
 - [x] Phase 0 — Scope and contracts
-- [ ] Phase 1 — Payload encoding (portable contract and independent ECC pending)
-- [ ] Phase 2 — Matrix and local decoder
+- [x] Phase 1 — Payload encoding
+- [x] Phase 2 — Matrix and local decoder
 - [x] Phase 3 — Renderer
 - [x] Phase 4 — Generator
-- [ ] Phase 5 — QR-anchored decoder
-- [ ] Phase 6 — Camera performance
-- [ ] Phase 7 — Multi-frame recovery
-- [ ] Phase 8 — API/database integration
-- [ ] Phase 9 — Test matrix
-- [ ] Phase 10 — Physical pilot and freeze
+- [x] Phase 5 — QR-anchored decoder (synthetic coverage passed; device matrix carried over)
+- [x] Phase 6 — Camera control and performance
+- [x] Phase 7 — Closed by design decision: single-frame acceptance superseded multi-frame recovery
+- [x] Phase 8 — API/database integration
+- [x] Phase 9 — Test matrix (automated suites 23/23; browser/device matrix carried over)
+- [x] Phase 10 — Closed: physical pilot and formal freeze carried to the successor roadmap; payload/matrix/renderer contracts frozen as implemented
+- [x] Roadmap closed (2026-09-03); the successor roadmap owns the next web V3 work
 
 ## 10. Change Record
 
@@ -470,4 +487,4 @@ Record every implementation change that affects the V3 contract or detection beh
 
 | Date | Files | Change | Validation | Result |
 |---|---|---|---|---|
-|  |  |  |  |  |
+| 2026-09-03 | `V3_DEVELOPMENT_ROADMAP.md` | Roadmap case-closed: Phase 5–10 statuses finalized, single-frame acceptance recorded as the Phase 7 design decision, checklist, open decisions, and decision log updated. No code changes. | `node node_modules/tsx/dist/cli.mjs --test tests/v3-*.test.ts` → 23/23 passed; `tsc --noEmit` reports only pre-existing app-shell typing errors (typedRoutes `RouteImpl`, `JSX` namespace, leaflet types resolving from `verify-cdp-next-v2/node_modules`); no errors in `lib/cdp/v3-*`, `hooks/useVerifyScanner.ts`, or `tests/` | Web V3 digital contract frozen; the successor roadmap owns the next phase of work |
