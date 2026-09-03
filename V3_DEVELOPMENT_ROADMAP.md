@@ -1,6 +1,7 @@
 # Verify CDP Web V3 — Development Roadmap
 
 **Status:** CLOSED (2026-09-03) — Phases 1–8 complete and operator-confirmed in daily use; automated V3 suite passes 23/23; the formal browser/device matrix and the physical pilot are carried over to the successor roadmap. This document is preserved as the frozen V3 contract reference.  
+**Successor:** `V3.1_DEVELOPMENT_ROADMAP.md` (custom QR API + Prisma/`dotvera_v3`). Do not reopen payload, matrix, or layout geometry here.  
 **Baseline:** `verify-cdp-next-v2`  
 **Target project:** `verify-cdp-next-v3`  
 **Last updated:** 2026-09-03
@@ -442,6 +443,7 @@ Order:
 | 2026-08-26 | Native zoom is supported when available and must not force lens switching | Improve readability of small physical samples | Use v1-compatible zoom constraints and cross-browser fallback |
 | 2026-09-03 | Single-frame acceptance supersedes the Phase 7 multi-frame recovery design | In-codec repetition voting plus Reed–Solomon/CRC proved sufficient; cross-frame pooling risks stale-payload verdicts | Phase 7 closes with no cross-frame history; A → Z submits only the current frame's payload |
 | 2026-09-03 | Web V3 roadmap closed; remaining device/browser matrix and physical pilot move to the successor roadmap | The digital contract (payload, matrix, renderer, generator, QR-anchored decoder, API) is complete, operator-confirmed, and in daily use | This document becomes the frozen V3 contract reference; future edits are contract-change records only |
+| 2026-09-03 | Successor named: `V3.1_DEVELOPMENT_ROADMAP.md` | V3.1 owns the custom QR generate API and the Prisma/`dotvera_v3` schema cutover | Payload, 64×32 matrix, and QR-right geometry stay frozen in this file; V3.1 may replace only QR pixels and persistence |
 
 ## 8. Open Decisions
 
@@ -479,7 +481,7 @@ Remaining unchecked decisions are carried to the successor roadmap; they do not 
 - [x] Phase 8 — API/database integration
 - [x] Phase 9 — Test matrix (automated suites 23/23; browser/device matrix carried over)
 - [x] Phase 10 — Closed: physical pilot and formal freeze carried to the successor roadmap; payload/matrix/renderer contracts frozen as implemented
-- [x] Roadmap closed (2026-09-03); the successor roadmap owns the next web V3 work
+- [x] Roadmap closed (2026-09-03); successor is `V3.1_DEVELOPMENT_ROADMAP.md`
 
 ## 10. Change Record
 
@@ -488,3 +490,4 @@ Record every implementation change that affects the V3 contract or detection beh
 | Date | Files | Change | Validation | Result |
 |---|---|---|---|---|
 | 2026-09-03 | `V3_DEVELOPMENT_ROADMAP.md` | Roadmap case-closed: Phase 5–10 statuses finalized, single-frame acceptance recorded as the Phase 7 design decision, checklist, open decisions, and decision log updated. No code changes. | `node node_modules/tsx/dist/cli.mjs --test tests/v3-*.test.ts` → 23/23 passed; `tsc --noEmit` reports only pre-existing app-shell typing errors (typedRoutes `RouteImpl`, `JSX` namespace, leaflet types resolving from `verify-cdp-next-v2/node_modules`); no errors in `lib/cdp/v3-*`, `hooks/useVerifyScanner.ts`, or `tests/` | Web V3 digital contract frozen; the successor roadmap owns the next phase of work |
+| 2026-09-03 | `V3_DEVELOPMENT_ROADMAP.md`, `V3.1_DEVELOPMENT_ROADMAP.md` | Named the successor roadmap and pointed remaining device/physical work plus the custom-QR/Prisma cutover at V3.1. No application code. | Document cross-link only | V3 stays frozen; new work starts from `V3.1_DEVELOPMENT_ROADMAP.md` after Phase 0 acceptance |
