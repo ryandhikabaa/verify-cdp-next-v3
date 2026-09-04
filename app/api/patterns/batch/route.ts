@@ -1,9 +1,26 @@
 import {NextRequest} from 'next/server';
-import {apiError} from '@/lib/api-response';
+import {apiError, apiSuccess} from '@/lib/api-response';
+import {prisma} from '@/lib/db/prisma';
 
-const PATTERN_SAVE_UNAVAILABLE_MESSAGE = 'Penyimpanan pattern V3.1 membutuhkan metadata QR dari API generate. Endpoint ini aktif setelah Phase 4.';
-
-/** Pattern batch waits for Phase 4 QR metadata. Do not insert into v21. */
-export async function POST(_request: NextRequest) {
-  return apiError({status: 400, message: PATTERN_SAVE_UNAVAILABLE_MESSAGE});
+export async function POST(request: NextRequest) {
+  try {
+    const body = await request.json();
+    if (!Array.isArray(body?.docs) || body.docs.length === 0) return apiError({status: 400, message: 'Docs batch wajib diisi.'});
+    const docs = body.docs.map((doc: Record<string, unknown>) => ({
+      qrPayload: String(doc.qr_payload ?? ''), qrHvalue: String(doc.qr_hvalue ?? ''),
+      qrSecret1: String(doc.qr_secret1 ?? ''), qrSecret2: String(doc.qr_secret2 ?? ''), qrImage: String(doc.qr_image ?? ''),
+      patternPayload: String(doc.pattern_payload ?? ''), imageData: (doc.image_data as string) ?? null,
+      density: Number(doc.density ?? 0), size: doc.size == null ? null : Number(doc.size), style: (doc.style as string) ?? null,
+      layoutVersion: String(doc.layout_version ?? 'v3-qr-pattern'), qrWidthPx: (doc.qr_width_px as number) ?? null,
+      qrHeightPx: (doc.qr_height_px as number) ?? null, patternWidthPx: (doc.pattern_width_px as number) ?? null,
+      patternHeightPx: (doc.pattern_height_px as number) ?? null, gapPx: (doc.gap_px as number) ?? null,
+      canvasWidthPx: (doc.canvas_width_px as number) ?? null, canvasHeightPx: (doc.canvas_height_px as number) ?? null,
+    }));
+    if (docs.some((doc) => Object.values(doc).slice(0, 7).some((value) => value === ''))) return apiError({status: 400, message: 'Metadata QR dan payload pattern wajib diisi.'});
+    await prisma.patternGenerated.createMany({data: docs});
+    return apiSuccess({count: docs.length}, {message: 'Patterns saved'});
+  } catch (error) {
+    console.error('Error saving batch:', error);
+    return apiError({status: 500, message: 'Gagal menyimpan pattern batch.'});
+  }
 }

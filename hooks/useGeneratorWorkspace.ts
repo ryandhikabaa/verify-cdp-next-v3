@@ -432,7 +432,10 @@ export function useGeneratorWorkspace() {
       await waitForLoadingPaint();
       const safeCount = Math.min(Math.max(batchCount || 1, 1), MAX_BATCH_COUNT);
       const seeds = createUniqueSeeds(safeCount);
-      const batchBaseSettings = makeAutomaticBatchBase(settings);
+      const batchBaseSettings = {
+        ...makeAutomaticBatchBase(settings),
+        qr_hvalue: payloadDraft.hvalue,
+      };
       const generated = await Promise.all(seeds.map(async (seed) => {
         return {id: seed, settings: await makeSettingsForSeed(batchBaseSettings, seed)} satisfies BatchPattern;
       }));
