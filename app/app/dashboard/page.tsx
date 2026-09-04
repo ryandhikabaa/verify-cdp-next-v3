@@ -1,58 +1,57 @@
 import {BarChart3, Grid2X2, ShieldCheck, Smartphone, Users} from 'lucide-react';
 import {AppShell} from '@/components/AppShell';
 import {VerificationMapCard} from '@/components/dashboard/VerificationMapCardClient';
-import {verificationSourceSqlExpression} from '@/lib/cdp/verification-source';
-import {ensureDotveraSchema, getDotveraPool} from '@/lib/db/dotvera';
+import {detectVerificationSource} from '@/lib/cdp/verification-source';
+import {prisma} from '@/lib/db/prisma';
 
 const numberFormatter = new Intl.NumberFormat('id-ID');
 
+function startOfToday() {
+  const now = new Date();
+  return new Date(now.getFullYear(), now.getMonth(), now.getDate());
+}
+
 /** Renders the dashboard landing page for the authenticated app area. */
 export default async function DashboardPage() {
-  await ensureDotveraSchema();
-
-  const pool = getDotveraPool();
-  const sourceExpression = verificationSourceSqlExpression();
-  const [patternsResult, verificationsResult, authenticResult, counterfeitResult, mismatchResult, usersResult, todayResult, recentSourcesResult, mapPointsResult] = await Promise.all([
-    pool.query('SELECT COUNT(*)::int AS count FROM pattern_generated_v21'),
-    pool.query('SELECT COUNT(*)::int AS count FROM pattern_detection'),
-    pool.query(`SELECT COUNT(*)::int AS count FROM pattern_detection WHERE status = 'AUTHENTIC'`),
-    pool.query(`SELECT COUNT(*)::int AS count FROM pattern_detection WHERE status = 'COUNTERFEIT'`),
-    pool.query(`SELECT COUNT(*)::int AS count FROM pattern_detection WHERE status = 'MISMATCH'`),
-    pool.query('SELECT COUNT(*)::int AS count FROM "user"'),
-    pool.query(`SELECT COUNT(*)::int AS count FROM pattern_detection WHERE created_at >= CURRENT_DATE`),
-    pool.query<{source: string; count: number}>(`
-      SELECT ${sourceExpression} AS source, COUNT(*)::int AS count
-      FROM pattern_detection
-      GROUP BY ${sourceExpression}
-      ORDER BY count DESC
-      LIMIT 3
-    `),
-    pool.query<{id: string; label: string; status: string; latitude: number; longitude: number; source: string; created_at: string}>(`
-      SELECT id, label, status, latitude, longitude, ${sourceExpression} AS source, created_at::text
-      FROM pattern_detection
-      WHERE latitude IS NOT NULL AND longitude IS NOT NULL
-      ORDER BY created_at DESC
-      LIMIT 150
-    `),
+  const today = startOfToday();
+  const [patternsCount, verificationsCount, authenticCount, counterfeitCount, mismatchCount, usersCount, todayCount, sourceRows, mapRows] = await Promise.all([
+    prisma.patternGenerated.count(),
+    prisma.patternDetection.count(),
+    prisma.patternDetection.count({where: {status: 'AUTHENTIC'}}),
+    prisma.patternDetection.count({where: {status: 'COUNTERFEIT'}}),
+    prisma.patternDetection.count({where: {status: 'MISMATCH'}}),
+    prisma.user.count(),
+    prisma.patternDetection.count({where: {createdAt: {gte: today}}}),
+    prisma.patternDetection.findMany({select: {deviceID: true}}),
+    prisma.patternDetection.findMany({
+      where: {latitude: {not: null}, longitude: {not: null}},
+      orderBy: {createdAt: 'desc'},
+      take: 150,
+      select: {id: true, label: true, status: true, latitude: true, longitude: true, deviceID: true, createdAt: true},
+    }),
   ]);
 
-  const patternsCount = patternsResult.rows[0]?.count ?? 0;
-  const verificationsCount = verificationsResult.rows[0]?.count ?? 0;
-  const authenticCount = authenticResult.rows[0]?.count ?? 0;
-  const counterfeitCount = counterfeitResult.rows[0]?.count ?? 0;
-  const mismatchCount = mismatchResult.rows[0]?.count ?? 0;
-  const usersCount = usersResult.rows[0]?.count ?? 0;
-  const todayCount = todayResult.rows[0]?.count ?? 0;
-  const recentSources = recentSourcesResult.rows;
-  const verificationMapPoints = mapPointsResult.rows.map((row) => ({
-    id: row.id,
-    label: row.label,
-    status: row.status,
-    latitude: row.latitude,
-    longitude: row.longitude,
-    source: row.source,
-    createdAt: row.created_at,
-  }));
+  const sourceCounts = new Map<string, number>();
+  for (const row of sourceRows) {
+    const source = detectVerificationSource(row.deviceID);
+    sourceCounts.set(source, (sourceCounts.get(source) ?? 0) + 1);
+  }
+  const recentSources = [...sourceCounts.entries()]
+    .map(([source, count]) => ({source, count}))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 3);
+  const verificationMapPoints = mapRows.flatMap((row) => {
+    if (row.latitude == null || row.longitude == null) return [];
+    return [{
+      id: row.id,
+      label: row.label,
+      status: row.status,
+      latitude: row.latitude,
+      longitude: row.longitude,
+      source: detectVerificationSource(row.deviceID),
+      createdAt: row.createdAt.toISOString(),
+    }];
+  });
   const toPercent = (value: number) => (verificationsCount > 0 ? `${((value / verificationsCount) * 100).toFixed(1)}%` : '0%');
   const healthScore = verificationsCount > 0 ? Math.round((authenticCount / verificationsCount) * 100) : 0;
   const dominantSource = recentSources[0]?.source ?? '-';

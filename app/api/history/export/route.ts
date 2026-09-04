@@ -1,17 +1,8 @@
 import {NextRequest, NextResponse} from 'next/server';
-import {ensureDotveraSchema, getDotveraPool} from '@/lib/db/dotvera';
 import {apiError} from '@/lib/api-response';
-import {buildVerificationSourceFilterClause, detectVerificationSource} from '@/lib/cdp/verification-source';
-
-type ExportRow = {
-  id: string;
-  label: string;
-  deviceID: string;
-  status: string;
-  latitude: number | null;
-  longitude: number | null;
-  created_at: Date | string;
-};
+import {detectVerificationSource} from '@/lib/cdp/verification-source';
+import {buildDetectionListWhere} from '@/lib/db/detections';
+import {prisma} from '@/lib/db/prisma';
 
 function escapeCsv(value: unknown) {
   const normalized = value == null ? '' : String(value);
@@ -20,41 +11,25 @@ function escapeCsv(value: unknown) {
 
 export async function GET(request: NextRequest) {
   try {
-    await ensureDotveraSchema();
-
     const search = request.nextUrl.searchParams.get('search')?.trim() ?? '';
     const status = request.nextUrl.searchParams.get('status')?.trim().toUpperCase() ?? 'ALL';
     const source = request.nextUrl.searchParams.get('source')?.trim().toUpperCase() ?? 'ALL';
-
-    const filters: string[] = [];
-    const values: Array<string> = [];
-
-    if (search) {
-      values.push(`%${search}%`);
-      filters.push(`(label ILIKE $${values.length} OR "deviceID" ILIKE $${values.length})`);
-    }
-
-    if (status !== 'ALL') {
-      values.push(status);
-      filters.push(`status = $${values.length}`);
-    }
-
-    if (source !== 'ALL') {
-      values.push(source);
-      filters.push(`(${buildVerificationSourceFilterClause(values.length)})`);
-    }
-
-    const whereClause = filters.length > 0 ? `WHERE ${filters.join(' AND ')}` : '';
-    const pool = getDotveraPool();
-    const result = await pool.query<ExportRow>(`
-      SELECT id, label, "deviceID", status, latitude, longitude, created_at
-      FROM pattern_detection
-      ${whereClause}
-      ORDER BY created_at DESC
-    `, values);
+    const result = await prisma.patternDetection.findMany({
+      where: buildDetectionListWhere({search, status, source}),
+      orderBy: {createdAt: 'desc'},
+      select: {
+        id: true,
+        label: true,
+        deviceID: true,
+        status: true,
+        latitude: true,
+        longitude: true,
+        createdAt: true,
+      },
+    });
 
     const header = ['id', 'label', 'device_id', 'source', 'status', 'latitude', 'longitude', 'created_at'];
-    const rows = result.rows.map((row) => [
+    const rows = result.map((row) => [
       escapeCsv(row.id),
       escapeCsv(row.label),
       escapeCsv(row.deviceID),
@@ -62,7 +37,7 @@ export async function GET(request: NextRequest) {
       escapeCsv(row.status),
       escapeCsv(row.latitude),
       escapeCsv(row.longitude),
-      escapeCsv(new Date(row.created_at).toISOString()),
+      escapeCsv(row.createdAt.toISOString()),
     ]);
 
     const csv = [header.join(','), ...rows.map((row) => row.join(','))].join('\n');

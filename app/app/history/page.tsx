@@ -1,31 +1,20 @@
+import type {Prisma} from '@prisma/client';
 import {Globe, History, ScanLine, Search, ShieldCheck, Smartphone} from 'lucide-react';
 import {AppShell} from '@/components/AppShell';
 import {HistoryTableClient} from '@/components/history/HistoryTableClient';
-import {buildVerificationSourceFilterClause, detectVerificationSource} from '@/lib/cdp/verification-source';
-import {ensureDotveraSchema, getDotveraPool} from '@/lib/db/dotvera';
-
-type VerificationHistoryRow = {
-  id: string;
-  label: string;
-  deviceID: string;
-  status: string;
-  notes: string | null;
-  pattern_decode_payload: string | null;
-  latitude: number | null;
-  longitude: number | null;
-  created_at: Date | string;
-  image_data: string | null;
-};
+import {detectVerificationSource} from '@/lib/cdp/verification-source';
+import {buildDetectionListWhere} from '@/lib/db/detections';
+import {prisma} from '@/lib/db/prisma';
 
 const numberFormatter = new Intl.NumberFormat('id-ID');
 const PAGE_SIZE = 10;
 const HISTORY_SORT_COLUMNS = {
   label: 'label',
-  source: `CASE WHEN "deviceID" LIKE 'WEB-%' THEN 'WEB' ELSE 'MOBILE' END`,
+  source: 'deviceID',
   status: 'status',
-  device: '"deviceID"',
+  device: 'deviceID',
   location: 'latitude',
-  time: 'created_at',
+  time: 'createdAt',
 } as const;
 
 function toPercent(value: number, total: number) {
@@ -46,86 +35,51 @@ export default async function VerificationHistoryPage({
   const requestedSort = typeof resolvedSearchParams.sort === 'string' ? resolvedSearchParams.sort : 'time';
   const sort = requestedSort in HISTORY_SORT_COLUMNS ? requestedSort as keyof typeof HISTORY_SORT_COLUMNS : 'time';
   const direction = resolvedSearchParams.direction === 'asc' ? 'asc' : 'desc';
-  const orderBy = HISTORY_SORT_COLUMNS[sort];
+  const sortField = HISTORY_SORT_COLUMNS[sort];
+  const orderBy: Prisma.PatternDetectionOrderByWithRelationInput[] = [
+    {[sortField]: direction},
+    {createdAt: 'desc'},
+  ];
+  const where = buildDetectionListWhere({search, status, source});
 
-  await ensureDotveraSchema();
-
-  const pool = getDotveraPool();
-  const filters: string[] = [];
-  const values: Array<string | number> = [];
-
-  if (search) {
-    values.push(`%${search}%`);
-    filters.push(`(label ILIKE $${values.length} OR "deviceID" ILIKE $${values.length})`);
-  }
-
-  if (status !== 'ALL') {
-    values.push(status);
-    filters.push(`status = $${values.length}`);
-  }
-
-  if (source !== 'ALL') {
-    values.push(source);
-    filters.push(`(${buildVerificationSourceFilterClause(values.length)})`);
-  }
-
-  const whereClause = filters.length > 0 ? `WHERE ${filters.join(' AND ')}` : '';
-
-  values.push(PAGE_SIZE);
-  values.push((currentPage - 1) * PAGE_SIZE);
-  const limitParam = values.length - 1;
-  const offsetParam = values.length;
-
-  const [historyResult, filteredCountResult, totalResult, authenticResult, counterfeitResult, mismatchResult, devicesResult] = await Promise.all([
-    pool.query<VerificationHistoryRow>(`
-            SELECT id, label, "deviceID", status, notes, pattern_decode_payload,
-              latitude, longitude, created_at, image_data
-      FROM pattern_detection
-      ${whereClause}
-      ORDER BY ${orderBy} ${direction.toUpperCase()} NULLS LAST, created_at DESC
-      LIMIT $${limitParam} OFFSET $${offsetParam}
-    `, values),
-    pool.query<{count: number}>(`SELECT COUNT(*)::int AS count FROM pattern_detection ${whereClause}`, values.slice(0, values.length - 2)),
-    pool.query<{count: number}>('SELECT COUNT(*)::int AS count FROM pattern_detection'),
-    pool.query<{count: number}>(`SELECT COUNT(*)::int AS count FROM pattern_detection WHERE status = 'AUTHENTIC'`),
-    pool.query<{count: number}>(`SELECT COUNT(*)::int AS count FROM pattern_detection WHERE status = 'COUNTERFEIT'`),
-    pool.query<{count: number}>(`SELECT COUNT(*)::int AS count FROM pattern_detection WHERE status = 'MISMATCH'`),
-    pool.query<{count: number}>('SELECT COUNT(DISTINCT "deviceID")::int AS count FROM pattern_detection'),
+  const [historyRowsRaw, filteredCount, totalCount, authenticCount, counterfeitCount, mismatchCount, devices, webCount, mobileCount] = await Promise.all([
+    prisma.patternDetection.findMany({
+      where,
+      orderBy,
+      skip: (currentPage - 1) * PAGE_SIZE,
+      take: PAGE_SIZE,
+    }),
+    prisma.patternDetection.count({where}),
+    prisma.patternDetection.count(),
+    prisma.patternDetection.count({where: {status: 'AUTHENTIC'}}),
+    prisma.patternDetection.count({where: {status: 'COUNTERFEIT'}}),
+    prisma.patternDetection.count({where: {status: 'MISMATCH'}}),
+    prisma.patternDetection.findMany({select: {deviceID: true}, distinct: ['deviceID']}),
+    prisma.patternDetection.count({where: {deviceID: {startsWith: 'WEB-', mode: 'insensitive'}}}),
+    prisma.patternDetection.count({where: {NOT: {deviceID: {startsWith: 'WEB-', mode: 'insensitive'}}}}),
   ]);
 
-  const [webCountResult, mobileCountResult] = await Promise.all([
-    pool.query<{count: number}>(`SELECT COUNT(*)::int AS count FROM pattern_detection WHERE "deviceID" LIKE 'WEB-%'`),
-    pool.query<{count: number}>(`SELECT COUNT(*)::int AS count FROM pattern_detection WHERE "deviceID" NOT LIKE 'WEB-%'`),
-  ]);
-
-  const filteredCount = filteredCountResult.rows[0]?.count ?? 0;
-  const totalCount = totalResult.rows[0]?.count ?? 0;
-  const authenticCount = authenticResult.rows[0]?.count ?? 0;
-  const counterfeitCount = counterfeitResult.rows[0]?.count ?? 0;
-  const mismatchCount = mismatchResult.rows[0]?.count ?? 0;
-  const devicesCount = devicesResult.rows[0]?.count ?? 0;
-  const webCount = webCountResult.rows[0]?.count ?? 0;
-  const mobileCount = mobileCountResult.rows[0]?.count ?? 0;
+  const devicesCount = devices.length;
   const totalPages = Math.max(1, Math.ceil(filteredCount / PAGE_SIZE));
   const safeCurrentPage = Math.min(currentPage, totalPages);
   const pageStart = filteredCount === 0 ? 0 : (safeCurrentPage - 1) * PAGE_SIZE + 1;
   const pageEnd = Math.min(safeCurrentPage * PAGE_SIZE, filteredCount);
   const statusOptions = ['ALL', 'AUTHENTIC', 'COUNTERFEIT', 'MISMATCH'];
   const sourceOptions = ['ALL', 'WEB', 'MOBILE'];
-  const historyRows = historyResult.rows.map((row) => ({
+  const historyRows = historyRowsRaw.map((row) => ({
     id: row.id,
     label: row.label,
     deviceID: row.deviceID,
     source: detectVerificationSource(row.deviceID),
     status: row.status,
     notes: row.notes,
-    validationPayloadBase64: row.pattern_decode_payload
-      ? Buffer.from(row.pattern_decode_payload, 'latin1').toString('base64')
+    validationPayloadBase64: row.patternDecodePayload
+      ? Buffer.from(row.patternDecodePayload, 'latin1').toString('base64')
       : null,
     latitude: row.latitude,
     longitude: row.longitude,
-    createdAt: new Date(row.created_at).toISOString(),
-    imageData: row.image_data,
+    createdAt: row.createdAt.toISOString(),
+    imageData: row.imageData,
   }));
 
   return (

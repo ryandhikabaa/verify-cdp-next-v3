@@ -1,8 +1,9 @@
-import {NextRequest, NextResponse} from 'next/server';
+import {NextRequest} from 'next/server';
 import {createSessionToken, getSessionCookieName, getSessionMaxAge} from '@/lib/auth/session';
-import {ensureDotveraSchema, getDotveraPool, verifyPassword} from '@/lib/db/dotvera';
 import {normalizeRole} from '@/lib/auth/roles';
 import {apiError, apiSuccess} from '@/lib/api-response';
+import {verifyPassword} from '@/lib/db/dotvera';
+import {prisma} from '@/lib/db/prisma';
 
 export async function POST(request: NextRequest) {
   const {username, password} = await request.json();
@@ -12,11 +13,12 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    await ensureDotveraSchema();
-    const result = await getDotveraPool().query('SELECT id, username, password_hash, role FROM "user" WHERE username = $1 LIMIT 1', [String(username).trim()]);
-    const user = result.rows[0];
+    const user = await prisma.user.findFirst({
+      where: {username: String(username).trim()},
+      select: {id: true, username: true, passwordHash: true, role: true},
+    });
 
-    if (!user || !verifyPassword(String(password), user.password_hash)) {
+    if (!user || !verifyPassword(String(password), user.passwordHash)) {
       return apiError({status: 401, message: 'Username atau password tidak valid.'});
     }
 
@@ -24,7 +26,10 @@ export async function POST(request: NextRequest) {
       return apiError({status: 403, message: 'Akses login hanya tersedia untuk admin.'});
     }
 
-    await getDotveraPool().query('UPDATE "user" SET last_login = CURRENT_TIMESTAMP WHERE id = $1', [user.id]);
+    await prisma.user.update({
+      where: {id: user.id},
+      data: {lastLogin: new Date()},
+    });
 
     const token = await createSessionToken({
       userId: user.id,

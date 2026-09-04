@@ -43,6 +43,10 @@ export interface PatternDoc {
   payload_2?: string;
   payload_qr?: string;
   qr_payload?: string;
+  qr_hvalue?: string;
+  qr_secret1?: string;
+  qr_secret2?: string;
+  qr_image?: string;
   pattern_payload?: string;
   pattern_seed?: string;
   layout_version?: string;

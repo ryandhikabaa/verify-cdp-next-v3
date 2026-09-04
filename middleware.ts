@@ -6,7 +6,6 @@ import {apiError} from '@/lib/api-response';
 function isProtectedApiPath(pathname: string) {
   return (
     pathname === '/api/patterns/batch' ||
-    pathname === '/api/patterns/next-index' ||
     pathname.startsWith('/api/patterns/') ||
     pathname === '/api/users' ||
     pathname.startsWith('/api/users/')

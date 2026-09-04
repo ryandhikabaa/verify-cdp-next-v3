@@ -8,10 +8,18 @@
     "build": "next build",
     "start": "set NODE_ENV=production&& node server.mjs",
     "lint": "tsc --noEmit",
+    "test": "tsx --test tests/**/*.test.ts",
+    "prisma:generate": "prisma generate",
+    "prisma:migrate": "prisma migrate deploy",
+    "prisma:seed": "tsx prisma/seed.ts",
+    "db:dotvera:v3:setup": "tsx scripts/setup-dotvera-v3.ts",
     "db:dotvera:setup": "node scripts/setup-dotvera.mjs",
     "db:dotvera:v2:setup": "node scripts/setup-dotvera-v2.mjs",
     "db:dotvera:migrate-patterns": "node scripts/migrate-legacy-patterns-to-dotvera.mjs",
     "db:dotvera:seed-admin": "node scripts/seed-dotvera-admin.mjs"
+  },
+  "prisma": {
+    "seed": "tsx prisma/seed.ts"
   },
   "dependencies": {
     "@types/qrcode": "^1.5.6",
@@ -21,6 +29,7 @@
     "jszip": "^3.10.1",
     "leaflet": "^1.9.4",
     "lucide-react": "^0.546.0",
+    "@prisma/client": "^6.16.2",
     "next": "15.5.3",
     "pg": "^8.22.0",
     "qrcode": "^1.5.4",
@@ -34,6 +43,7 @@
     "@types/pg": "^8.15.5",
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
+    "prisma": "^6.16.2",
     "canvas": "^3.2.3",
     "tailwindcss": "^4.1.14",
     "tsx": "^4.23.12",

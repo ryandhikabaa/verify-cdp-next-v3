@@ -1,31 +1,9 @@
+import type {Prisma} from '@prisma/client';
 import {NextRequest} from 'next/server';
 import {apiError, apiSuccess} from '@/lib/api-response';
 import {decryptPayloadToSeed} from '@/lib/cdp';
-import {ensureDotveraSchema, getDotveraPool} from '@/lib/db/dotvera';
+import {prisma} from '@/lib/db/prisma';
 import {buildSharedTrackingNotes, resolveSharedVerifyStatus} from '@/lib/verifier-core';
-import type {VerifyStatus} from '@/lib/types';
-
-type VerificationInsertRow = {
-  id: string;
-  label: string;
-  deviceID: string;
-  status: VerifyStatus;
-  notes: string | null;
-  image_data: string | null;
-  latitude: number | null;
-  longitude: number | null;
-  qr_value: string | null;
-  qr_format: string | null;
-  qr_detected: boolean;
-  qr_bounds: Record<string, unknown> | null;
-  pattern_crop_bounds: Record<string, unknown> | null;
-  pattern_decode_payload: string | null;
-  payload_mode: 'legacy' | 'encrypted' | 'three-part' | 'unknown' | null;
-  decrypt_succeeded: boolean | null;
-  checksum_valid: boolean | null;
-  created_at: Date | string;
-  updated_at: Date | string;
-};
 
 const MAX_IMAGE_DATA_LENGTH = 5_000_000;
 const DEVICE_ID_MAX_LENGTH = 255;
@@ -180,15 +158,10 @@ export async function POST(request: NextRequest) {
   });
 
   try {
-    await ensureDotveraSchema();
-
-    const patternResult = await getDotveraPool().query<{id: string; serial: string}>(
-      'SELECT id, serial FROM pattern_generated_v21 WHERE serial = $1 LIMIT 1',
-      [incomingId],
-    );
-
-    const pattern = patternResult.rows[0] ?? null;
-    // V3 and v2.1 resolve status directly from the serial lookup; the shared
+    const pattern = await prisma.patternGenerated.findUnique({
+      where: {patternPayload: incomingId},
+    });
+    // V3 and v2.1 resolve status directly from the pattern_payload lookup; the shared
     // helper's payloadMode type only covers the legacy/encrypted tracking path.
     const isStructuredLayout = isThreePartV21 || isV3QrPattern;
     const finalStatus = isStructuredLayout
@@ -216,7 +189,7 @@ export async function POST(request: NextRequest) {
       incomingId,
       patternFound: Boolean(pattern),
       matchedPatternId: pattern?.id ?? null,
-      matchedSerial: pattern?.serial ?? null,
+      matchedPatternPayload: pattern?.patternPayload ?? null,
       finalStatus,
       decryptSucceeded,
       checksumValid,
@@ -227,46 +200,35 @@ export async function POST(request: NextRequest) {
       notes,
     });
 
-    const insertResult = await getDotveraPool().query<VerificationInsertRow>(
-      `INSERT INTO pattern_detection (
-         label, "deviceID", status, notes, image_data, latitude, longitude,
-         qr_value, qr_format, qr_detected, qr_bounds, pattern_crop_bounds,
-         pattern_decode_payload, payload_mode, decrypt_succeeded, checksum_valid,
-         created_at, updated_at
-       )
-       VALUES (
-         $1, $2, $3, $4, $5, $6, $7,
-         $8, $9, $10, $11::jsonb, $12::jsonb,
-         $13, $14, $15, $16,
-         COALESCE($17::timestamptz, CURRENT_TIMESTAMP), COALESCE($18::timestamptz, CURRENT_TIMESTAMP)
-       )
-       RETURNING id, label, "deviceID", status, notes, image_data, latitude, longitude,
-                 qr_value, qr_format, qr_detected, qr_bounds, pattern_crop_bounds,
-                 pattern_decode_payload, payload_mode, decrypt_succeeded, checksum_valid,
-                 created_at, updated_at`,
-      [
-        label || incomingId,
+    const verification = await prisma.patternDetection.create({
+      data: {
+        generatedId: pattern?.id ?? null,
+        label: label || incomingId,
         deviceID,
-        finalStatus,
+        status: finalStatus,
         notes,
         imageData,
         latitude,
         longitude,
-        qrValue || null,
-        qrFormat || null,
+        layoutVersion: layoutVersion || pattern?.layoutVersion || (isV3QrPattern ? V3_QR_PATTERN_LAYOUT : null),
+        qrPayload: pattern?.qrPayload ?? null,
+        qrHvalue: pattern?.qrHvalue ?? null,
+        qrSecret1: pattern?.qrSecret1 ?? null,
+        qrSecret2: pattern?.qrSecret2 ?? null,
+        qrValue: qrValue || null,
+        qrFormat: qrFormat || null,
         qrDetected,
-        qrBounds ? JSON.stringify(qrBounds) : null,
-        patternCropBounds ? JSON.stringify(patternCropBounds) : null,
-        patternDecodePayload || rawPayloadText || null,
+        qrBounds: qrBounds ? (qrBounds as Prisma.InputJsonValue) : undefined,
+        patternCropBounds: patternCropBounds ? (patternCropBounds as Prisma.InputJsonValue) : undefined,
+        patternPayload: incomingId.length <= 24 ? incomingId : null,
+        patternDecodePayload: patternDecodePayload || rawPayloadText || null,
         payloadMode,
         decryptSucceeded,
         checksumValid,
-        createdAt,
-        updatedAt,
-      ],
-    );
-
-    const verification = insertResult.rows[0];
+        createdAt: createdAt ? new Date(createdAt) : undefined,
+        updatedAt: updatedAt ? new Date(updatedAt) : undefined,
+      },
+    });
 
     console.info('[api/verify] Verification saved', {
       verificationId: verification.id,
@@ -274,11 +236,11 @@ export async function POST(request: NextRequest) {
       deviceID: verification.deviceID,
       status: verification.status,
       notes: verification.notes,
-      storedImageDataLength: verification.image_data?.length ?? 0,
+      storedImageDataLength: verification.imageData?.length ?? 0,
       latitude: verification.latitude,
       longitude: verification.longitude,
-      createdAt: verification.created_at,
-      updatedAt: verification.updated_at,
+      createdAt: verification.createdAt,
+      updatedAt: verification.updatedAt,
     });
 
     return apiSuccess(

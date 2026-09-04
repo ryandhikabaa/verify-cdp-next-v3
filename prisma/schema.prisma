@@ -1,0 +1,96 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+/// Operator catalog. Column names match v1/v2, including create_at.
+model User {
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  nama         String    @db.VarChar(255)
+  username     String    @unique @db.VarChar(100)
+  passwordHash String    @map("password_hash")
+  role         String    @db.VarChar(50)
+  createAt     DateTime  @default(now()) @map("create_at") @db.Timestamptz(6)
+  updateAt     DateTime  @default(now()) @updatedAt @map("update_at") @db.Timestamptz(6)
+  lastLogin    DateTime? @map("last_login") @db.Timestamptz(6)
+
+  @@index([username], map: "idx_user_username")
+  @@map("user")
+}
+
+/// Generated V3.1 composite. Identity is pattern_payload, not serial.
+model PatternGenerated {
+  id              String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  qrPayload       String              @map("qr_payload")
+  qrHvalue        String              @map("qr_hvalue") @db.VarChar(7)
+  qrSecret1       String              @map("qr_secret1")
+  qrSecret2       String              @map("qr_secret2")
+  qrImage         String              @map("qr_image")
+  patternPayload  String              @unique @map("pattern_payload") @db.VarChar(24)
+  imageData       String?             @map("image_data")
+  imageBlob       Bytes?              @map("image_blob")
+  density         Float
+  size            Int?
+  style           String?             @db.VarChar(100)
+  layoutVersion   String              @default("v3-qr-pattern") @map("layout_version") @db.VarChar(50)
+  qrWidthPx       Int?                @map("qr_width_px")
+  qrHeightPx      Int?                @map("qr_height_px")
+  patternWidthPx  Int?                @map("pattern_width_px")
+  patternHeightPx Int?                @map("pattern_height_px")
+  gapPx           Int?                @map("gap_px")
+  canvasWidthPx   Int?                @map("canvas_width_px")
+  canvasHeightPx  Int?                @map("canvas_height_px")
+  createAt        DateTime            @default(now()) @map("create_at") @db.Timestamptz(6)
+  updateAt        DateTime            @default(now()) @updatedAt @map("update_at") @db.Timestamptz(6)
+  detections      PatternDetection[]
+
+  @@index([layoutVersion], map: "idx_pattern_generated_layout_version")
+  @@index([qrHvalue], map: "idx_pattern_generated_qr_hvalue")
+  @@index([qrPayload], map: "idx_pattern_generated_qr_payload")
+  @@map("pattern_generated")
+}
+
+/// Scan audit log. QR secrets are stored for mobile online verify.
+model PatternDetection {
+  id                   String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  generatedId          String?            @map("generated_id") @db.Uuid
+  generated            PatternGenerated?  @relation(fields: [generatedId], references: [id], onDelete: SetNull)
+  label                String             @db.VarChar(255)
+  deviceID             String             @map("deviceID") @db.VarChar(255)
+  status               String             @db.VarChar(50)
+  notes                String?
+  imageData            String?            @map("image_data")
+  latitude             Float?
+  longitude            Float?
+  layoutVersion        String?            @map("layout_version") @db.VarChar(50)
+  qrPayload            String?            @map("qr_payload")
+  qrHvalue             String?            @map("qr_hvalue") @db.VarChar(7)
+  qrSecret1            String?            @map("qr_secret1")
+  qrSecret2            String?            @map("qr_secret2")
+  qrValue              String?            @map("qr_value")
+  qrFormat             String?            @map("qr_format") @db.VarChar(50)
+  qrDetected           Boolean            @default(false) @map("qr_detected")
+  qrBounds             Json?              @map("qr_bounds")
+  patternPayload       String?            @map("pattern_payload") @db.VarChar(24)
+  patternDecodePayload String?            @map("pattern_decode_payload")
+  patternCropBounds    Json?              @map("pattern_crop_bounds")
+  rectangularScore     Float?             @map("rectangular_score")
+  patternConfidence    Float?             @map("pattern_confidence")
+  payloadMode          String?            @map("payload_mode") @db.VarChar(20)
+  decryptSucceeded     Boolean?           @map("decrypt_succeeded")
+  checksumValid        Boolean?           @map("checksum_valid")
+  createdAt            DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt            DateTime           @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([deviceID], map: "idx_pattern_detection_device_id")
+  @@index([qrDetected], map: "idx_pattern_detection_qr_detected")
+  @@index([payloadMode], map: "idx_pattern_detection_payload_mode")
+  @@index([patternPayload], map: "idx_pattern_detection_pattern_payload")
+  @@index([generatedId], map: "idx_pattern_detection_generated_id")
+  @@index([layoutVersion], map: "idx_pattern_detection_layout_version")
+  @@map("pattern_detection")
+}
