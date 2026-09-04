@@ -65,6 +65,9 @@ export interface PatternDoc {
   gap_px?: number;
   canvas_width_px?: number;
   canvas_height_px?: number;
+  scanned_count?: number;
+  authentic_count?: number;
+  counterfeit_count?: number;
   image_data?: string;
   created_at?: string;
   updated_at?: string;

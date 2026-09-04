@@ -4,7 +4,8 @@ import JSZip from 'jszip';
 import QRCode from 'qrcode';
 import {useCallback, useEffect, useMemo, useState} from 'react';
 import {usePatternLibrary} from '@/hooks/usePatternLibrary';
-import {CDP_PREVIEW_RENDER_SCALE, CDP_RENDER_SCALE, generateV3Matrix, normalizeCDPSettings, renderRectangularCDPToCanvas, renderV3QrPatternToCanvas, STANDARD_CDP_SETTINGS, validateV3Payload, withGreyTextureStyleTrace} from '@/lib/cdp';
+import {CDP_PREVIEW_RENDER_SCALE, CDP_RENDER_SCALE, generateV3Matrix, hvalueErrorMessage, normalizeCDPSettings, renderRectangularCDPToCanvas, renderV3QrPatternToCanvas, STANDARD_CDP_SETTINGS, validateHvalue, validateV3Payload, withGreyTextureStyleTrace} from '@/lib/cdp';
+import {HvalueValidationError} from '@/lib/cdp/hvalue';
 import {ApiClientError, fetchApi} from '@/lib/api-client';
 import {API_BASE} from '@/lib/app-constants';
 import {docToSettings, makeRandomSeed, sanitizeFilename} from '@/lib/pattern-helpers';
@@ -16,7 +17,7 @@ const LIVE_PREVIEW_DEBOUNCE_MS = 120;
 const PAYLOAD_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
 const LOCKED_QR_PAYLOAD = 'https://puragroup.com';
 
-type PayloadDraft = {payload: string};
+type PayloadDraft = {payload: string; hvalue: string};
 
 function isFilled(value: string | undefined) {
   return Boolean(value?.trim());
@@ -41,10 +42,22 @@ function waitForLoadingPaint() {
 }
 
 function sanitizePayloadDraft(draft: PayloadDraft): PayloadDraft {
-  return {payload: sanitizeCdpPayload(draft.payload)};
+  return {payload: sanitizeCdpPayload(draft.payload), hvalue: draft.hvalue};
+}
+
+function getHiddenValueError(hvalue: string) {
+  try {
+    validateHvalue(hvalue);
+    return null;
+  } catch (error) {
+    if (error instanceof HvalueValidationError) return hvalueErrorMessage(error.code);
+    return 'Hidden value hanya boleh huruf atau angka.';
+  }
 }
 
 function getPayloadDraftError(draft: PayloadDraft) {
+  const hiddenValueError = getHiddenValueError(draft.hvalue);
+  if (hiddenValueError) return hiddenValueError;
   const sanitized = sanitizePayloadDraft(draft);
   if (!sanitized.payload) return 'Payload V3 wajib diisi terlebih dahulu.';
   return null;
@@ -82,6 +95,7 @@ export function useGeneratorWorkspace() {
   const [settings, setSettings] = useState<GeneratorSettings>(STANDARD_CDP_SETTINGS);
   const [payloadDraft, setPayloadDraft] = useState<PayloadDraft>(() => ({
     payload: sanitizeCdpPayload(STANDARD_CDP_SETTINGS.payload ?? '') || makeRandomPayload(),
+    hvalue: '',
   }));
   const [batchCount, setBatchCount] = useState(10);
   const [seedLength, setSeedLength] = useState(24);
@@ -135,22 +149,29 @@ export function useGeneratorWorkspace() {
     }));
   }, [patternLibrary.docsList]);
 
-  const applyPayloadDraft = useCallback(() => {
-    setSettings((current) => applyPayloadDraftToSettings(current, payloadDraft));
-  }, [payloadDraft]);
-
-  const randomizePayloadDraft = useCallback(() => {
-    setPayloadDraft({
-      payload: makeRandomPayload(),
-    });
-  }, []);
-
   const ensurePayloadDraftFilled = useCallback(() => {
     const payloadError = getPayloadDraftError(payloadDraft);
     if (!payloadError) return true;
     setValidationDialogMessage(payloadError);
     return false;
   }, [payloadDraft]);
+
+  const applyPayloadDraft = useCallback(() => {
+    if (!ensurePayloadDraftFilled()) return;
+    setSettings((current) => applyPayloadDraftToSettings(current, payloadDraft));
+  }, [ensurePayloadDraftFilled, payloadDraft]);
+
+  const randomizePayloadDraft = useCallback(() => {
+    const hiddenValueError = getHiddenValueError(payloadDraft.hvalue);
+    if (hiddenValueError) {
+      setValidationDialogMessage(hiddenValueError);
+      return;
+    }
+    setPayloadDraft((current) => ({
+      ...current,
+      payload: makeRandomPayload(),
+    }));
+  }, [payloadDraft.hvalue]);
 
   useEffect(() => {
     void patternLibrary.loadPatterns();

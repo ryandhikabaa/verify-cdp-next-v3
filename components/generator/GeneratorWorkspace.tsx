@@ -107,7 +107,7 @@ export function GeneratorWorkspace() {
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 px-4 backdrop-blur-sm" onClick={() => setValidationDialogMessage('')}>
             <div className="w-full max-w-md rounded-[2rem] border border-cyan-100 bg-white p-6 shadow-[0_30px_80px_rgba(15,23,42,0.22)]" onClick={(event) => event.stopPropagation()}>
               <div className="text-[11px] font-black uppercase tracking-[0.24em] text-cyan-700">Data belum lengkap</div>
-              <h3 className="mt-3 text-2xl font-black tracking-[-0.04em] text-slate-950">Lengkapi payload CDP</h3>
+              <h3 className="mt-3 text-2xl font-black tracking-[-0.04em] text-slate-950">Lengkapi Hidden value dan payload</h3>
               <p className="mt-4 text-sm leading-7 text-slate-500">{validationDialogMessage}</p>
               <div className="mt-6 flex justify-end">
                 <button

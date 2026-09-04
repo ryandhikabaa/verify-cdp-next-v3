@@ -125,6 +125,37 @@ export const endpointDocs: EndpointDocDefinition[] = [
     responseExample: 'Binary PNG response',
   },
   {
+    id: 'qr-generate',
+    group: 'Patterns',
+    method: 'POST',
+    path: '/api/qr/generate',
+    access: 'Admin',
+    summary: 'Meneruskan hvalue ke QR API eksternal.',
+    description: 'Browser tidak memanggil host QR langsung. Route ini memvalidasi hvalue, meneruskan `{ hvalue }` ke URL QR yang dikunci, lalu mengembalikan metadata QR yang sudah dinormalisasi. Swap pixel QR ke canvas tetap milik Phase 3.',
+    requestExample: JSON.stringify({hvalue: 'TELKOM'}, null, 2),
+    responseExample: JSON.stringify({
+      status: true,
+      message: 'QR berhasil diperoleh dari QR API.',
+      data: {
+        qr_payload: 'b0df621A',
+        qr_hvalue: 'TELKOM',
+        qr_secret1: 'A8C2D3E0AECE',
+        qr_secret2: '1CE6',
+        qr_image: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+ip1sAAAAASUVORK5CYII=',
+      },
+    }, null, 2),
+    errorExamples: [
+      {
+        title: 'hvalue terlalu panjang',
+        response: JSON.stringify({status: false, message: 'Hidden value maksimal 7 karakter.', data: null}, null, 2),
+      },
+      {
+        title: 'QR API non-200',
+        response: JSON.stringify({status: false, message: 'Gagal generate QR (HTTP 500). Proses dihentikan.', data: {upstream_status: 500}}, null, 2),
+      },
+    ],
+  },
+  {
     id: 'users-list',
     group: 'Users & History',
     method: 'GET',

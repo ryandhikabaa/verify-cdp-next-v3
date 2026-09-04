@@ -200,34 +200,49 @@ export async function POST(request: NextRequest) {
       notes,
     });
 
-    const verification = await prisma.patternDetection.create({
-      data: {
-        generatedId: pattern?.id ?? null,
-        label: label || incomingId,
-        deviceID,
-        status: finalStatus,
-        notes,
-        imageData,
-        latitude,
-        longitude,
-        layoutVersion: layoutVersion || pattern?.layoutVersion || (isV3QrPattern ? V3_QR_PATTERN_LAYOUT : null),
-        qrPayload: pattern?.qrPayload ?? null,
-        qrHvalue: pattern?.qrHvalue ?? null,
-        qrSecret1: pattern?.qrSecret1 ?? null,
-        qrSecret2: pattern?.qrSecret2 ?? null,
-        qrValue: qrValue || null,
-        qrFormat: qrFormat || null,
-        qrDetected,
-        qrBounds: qrBounds ? (qrBounds as Prisma.InputJsonValue) : undefined,
-        patternCropBounds: patternCropBounds ? (patternCropBounds as Prisma.InputJsonValue) : undefined,
-        patternPayload: incomingId.length <= 24 ? incomingId : null,
-        patternDecodePayload: patternDecodePayload || rawPayloadText || null,
-        payloadMode,
-        decryptSucceeded,
-        checksumValid,
-        createdAt: createdAt ? new Date(createdAt) : undefined,
-        updatedAt: updatedAt ? new Date(updatedAt) : undefined,
-      },
+    const verification = await prisma.$transaction(async (tx) => {
+      const created = await tx.patternDetection.create({
+        data: {
+          generatedId: pattern?.id ?? null,
+          label: label || incomingId,
+          deviceID,
+          status: finalStatus,
+          notes,
+          imageData,
+          latitude,
+          longitude,
+          layoutVersion: layoutVersion || pattern?.layoutVersion || (isV3QrPattern ? V3_QR_PATTERN_LAYOUT : null),
+          qrPayload: pattern?.qrPayload ?? null,
+          qrHvalue: pattern?.qrHvalue ?? null,
+          qrSecret1: pattern?.qrSecret1 ?? null,
+          qrSecret2: pattern?.qrSecret2 ?? null,
+          qrValue: qrValue || null,
+          qrFormat: qrFormat || null,
+          qrDetected,
+          qrBounds: qrBounds ? (qrBounds as Prisma.InputJsonValue) : undefined,
+          patternCropBounds: patternCropBounds ? (patternCropBounds as Prisma.InputJsonValue) : undefined,
+          patternPayload: incomingId.length <= 24 ? incomingId : null,
+          patternDecodePayload: patternDecodePayload || rawPayloadText || null,
+          payloadMode,
+          decryptSucceeded,
+          checksumValid,
+          createdAt: createdAt ? new Date(createdAt) : undefined,
+          updatedAt: updatedAt ? new Date(updatedAt) : undefined,
+        },
+      });
+
+      if (pattern) {
+        await tx.patternGenerated.update({
+          where: {id: pattern.id},
+          data: {
+            scannedCount: {increment: 1},
+            ...(finalStatus === 'AUTHENTIC' ? {authenticCount: {increment: 1}} : {}),
+            ...(finalStatus === 'COUNTERFEIT' ? {counterfeitCount: {increment: 1}} : {}),
+          },
+        });
+      }
+
+      return created;
     });
 
     console.info('[api/verify] Verification saved', {

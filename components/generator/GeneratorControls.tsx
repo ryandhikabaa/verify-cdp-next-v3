@@ -1,8 +1,29 @@
 import type {ReactNode} from 'react';
 import {Database, Download, LoaderCircle} from 'lucide-react';
 import {NumberField} from '@/components/ui/NumberField';
-import {RECT_PATTERN_DOT_DENSITY, V3_PAYLOAD_CONSTANTS} from '@/lib/cdp';
+import {HVALUE_MAX_LENGTH, RECT_PATTERN_DOT_DENSITY, V3_PAYLOAD_CONSTANTS, hvalueErrorMessage, validateHvalue} from '@/lib/cdp';
+import {HvalueValidationError} from '@/lib/cdp/hvalue';
 import type {GeneratorSettings, GreyTextureVersion} from '@/lib/types';
+
+function getHvalueHelp(hvalue: string) {
+  if (!hvalue.trim()) return 'Hidden value wajib diisi sebelum Random data, Update preview, Simpan, Download, atau Generate batch.';
+  try {
+    validateHvalue(hvalue);
+    return `Maksimal ${HVALUE_MAX_LENGTH} karakter. Huruf besar/kecil dipertahankan.`;
+  } catch (error) {
+    return error instanceof HvalueValidationError ? hvalueErrorMessage(error.code) : 'Hidden value hanya boleh huruf atau angka.';
+  }
+}
+
+function isHvalueInvalid(hvalue: string) {
+  if (!hvalue.trim()) return false;
+  try {
+    validateHvalue(hvalue);
+    return false;
+  } catch {
+    return true;
+  }
+}
 
 const CDP_PAYLOAD_MAX_LENGTH = V3_PAYLOAD_CONSTANTS.MAX_PAYLOAD_LENGTH;
 
@@ -45,8 +66,8 @@ export function GeneratorControls({
   greyTextureVersion: GreyTextureVersion;
   setGreyTextureVersion: (value: GreyTextureVersion) => void;
   settings: GeneratorSettings;
-  payloadDraft: {payload: string};
-  setPayloadDraft: (updater: (current: {payload: string}) => {payload: string}) => void;
+  payloadDraft: {payload: string; hvalue: string};
+  setPayloadDraft: (updater: (current: {payload: string; hvalue: string}) => {payload: string; hvalue: string}) => void;
   onApplyPayloadDraft: () => void;
   onRandomPayloadDraft: () => void;
   onSave: () => void;
@@ -102,8 +123,29 @@ export function GeneratorControls({
           </div>
           <div className="mt-2 grid gap-2 lg:grid-cols-[minmax(0,0.82fr)_minmax(0,1fr)] lg:items-start">
             <label className="block lg:col-span-2">
+              <span className="mb-1 block text-[9px] font-black uppercase tracking-wider text-slate-500">Hidden value</span>
+              <input
+                value={payloadDraft.hvalue}
+                onChange={(event) => setPayloadDraft((current) => ({
+                  ...current,
+                  hvalue: event.target.value.slice(0, HVALUE_MAX_LENGTH),
+                }))}
+                maxLength={HVALUE_MAX_LENGTH}
+                inputMode="text"
+                autoComplete="off"
+                spellCheck={false}
+                aria-invalid={isHvalueInvalid(payloadDraft.hvalue)}
+                aria-label="Hidden value"
+                className="w-full rounded-md border border-slate-200 bg-white px-2.5 py-1.5 font-mono text-xs text-slate-800 outline-none focus:border-cyan-300"
+                aria-describedby="hvalue-help"
+              />
+              <span id="hvalue-help" className="mt-1 block text-[9px] font-semibold text-slate-500">
+                {getHvalueHelp(payloadDraft.hvalue)}
+              </span>
+            </label>
+            <label className="block lg:col-span-2">
               <span className="mb-1 block text-[9px] font-black uppercase tracking-wider text-slate-500">payload · V3 pattern kanan QR</span>
-              <input value={payloadDraft.payload} onChange={(event) => setPayloadDraft(() => ({payload: normalizePayloadInput(event.target.value)}))} maxLength={CDP_PAYLOAD_MAX_LENGTH} inputMode="text" className="w-full rounded-md border border-slate-200 bg-white px-2.5 py-1.5 font-mono text-xs text-slate-800 outline-none focus:border-cyan-300" />
+              <input value={payloadDraft.payload} onChange={(event) => setPayloadDraft((current) => ({...current, payload: normalizePayloadInput(event.target.value)}))} maxLength={CDP_PAYLOAD_MAX_LENGTH} inputMode="text" className="w-full rounded-md border border-slate-200 bg-white px-2.5 py-1.5 font-mono text-xs text-slate-800 outline-none focus:border-cyan-300" />
             </label>
           </div>
           <div className="mt-2 flex flex-wrap items-center gap-2">

@@ -1,6 +1,6 @@
 const HVALUE_ALPHABET = /^[A-Za-z0-9]+$/;
-const HVALUE_MIN_LENGTH = 1;
-const HVALUE_MAX_LENGTH = 7;
+export const HVALUE_MIN_LENGTH = 1;
+export const HVALUE_MAX_LENGTH = 7;
 
 export class HvalueValidationError extends Error {
   readonly code: 'required' | 'too_long' | 'alphabet';

@@ -5,6 +5,7 @@ import {apiError} from '@/lib/api-response';
 
 function isProtectedApiPath(pathname: string) {
   return (
+    pathname === '/api/qr/generate' ||
     pathname === '/api/patterns/batch' ||
     pathname.startsWith('/api/patterns/') ||
     pathname === '/api/users' ||
@@ -52,5 +53,5 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/app/:path*', '/api/patterns/:path*', '/api/users/:path*'],
+  matcher: ['/app/:path*', '/api/qr/:path*', '/api/patterns/:path*', '/api/users/:path*'],
 };

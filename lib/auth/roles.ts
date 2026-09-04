@@ -39,6 +39,7 @@ export function getRequiredRolesForApiPath(pathname: string, method: string): re
   if (pathname === '/api/patterns' && method === 'GET') return null;
   if (pathname.endsWith('/image') && method === 'GET') return null;
 
+  if (pathname === '/api/qr/generate' && method === 'POST') return ['admin'];
   if (pathname === '/api/patterns' && method === 'POST') return ['admin'];
   if (pathname === '/api/patterns/batch') return ['admin'];
   if (pathname.startsWith('/api/patterns/')) return ['admin'];

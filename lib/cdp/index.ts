@@ -19,6 +19,21 @@ export {renderCDPDisplayToCanvas, renderRectangularCDPToCanvas, renderCanvasWith
 export type {CanvasContentBounds, CompositeLayoutMetadata, V3QrPatternLayoutMetadata} from './render';
 export {decodeAndAlignPattern} from './decode';
 export {calculateSimilarity} from './similarity';
+export {HVALUE_MAX_LENGTH, HVALUE_MIN_LENGTH, HvalueValidationError, hvalueErrorMessage, validateHvalue} from './hvalue';
+export {
+	FAKE_QR_IMAGE_DATA_URL,
+	FAKE_QR_IMG_OUTPUT,
+	QR_GENERATE_ERROR_MESSAGES,
+	QR_GENERATE_LOCKED_URL,
+	QR_GENERATE_TIMEOUT_MS,
+	QrGenerateError,
+	parseQrGenerateRequestBody,
+	parseQrGenerateUpstreamBody,
+	qrGenerateHttpErrorMessage,
+	requestQrGenerateFromUpstream,
+	resolveLockedQrGenerateApiUrl,
+} from './qr-generate';
+export type {QrGenerateSuccess} from './qr-generate';
 export {decodeV3Payload, encodeV3Payload, validateV3Payload, V3_PAYLOAD_CONSTANTS} from './v3-payload';
 export type {V3DecodedPayload, V3PayloadCodeword} from './v3-payload';
 export {V3_MATRIX_BITS, V3_MATRIX_COLUMNS, V3_MATRIX_ROWS, corruptV3Matrix, decodeV3Matrix, generateV3Matrix} from './v3-matrix';
