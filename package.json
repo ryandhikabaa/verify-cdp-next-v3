@@ -3,7 +3,8 @@
   "private": true,
   "version": "0.1.0",
   "scripts": {
-    "dev": "node server.mjs",
+    "dev": "node --use-system-ca server.mjs",
+    "dev:system-ca": "node --use-system-ca server.mjs",
     "dev:http": "set HTTPS=false&& node server.mjs",
     "build": "next build",
     "start": "set NODE_ENV=production&& node server.mjs",

@@ -23,18 +23,21 @@ export class QrGenerateError extends Error {
   readonly status: number;
   readonly code: 'validation' | 'upstream_http' | 'timeout' | 'malformed' | 'network';
   readonly upstreamStatus?: number;
+  readonly causeMessage?: string;
 
   constructor(options: {
     message: string;
     status: number;
     code: QrGenerateError['code'];
     upstreamStatus?: number;
+    causeMessage?: string;
   }) {
     super(options.message);
     this.name = 'QrGenerateError';
     this.status = options.status;
     this.code = options.code;
     this.upstreamStatus = options.upstreamStatus;
+    this.causeMessage = options.causeMessage;
   }
 }
 
@@ -46,6 +49,16 @@ function isAbortError(error: unknown) {
   if (!error || typeof error !== 'object') return false;
   const name = 'name' in error ? String(error.name) : '';
   return name === 'AbortError';
+}
+
+function getNetworkCause(error: unknown) {
+  if (!(error instanceof Error)) return String(error);
+  const cause = 'cause' in error ? error.cause : undefined;
+  if (cause instanceof Error) return `${error.message}: ${cause.message}`;
+  if (cause && typeof cause === 'object' && 'message' in cause) {
+    return `${error.message}: ${String(cause.message)}`;
+  }
+  return error.message;
 }
 
 function readNonEmptyString(value: unknown) {
@@ -126,7 +139,7 @@ export function parseQrGenerateUpstreamBody(payload: unknown): QrGenerateSuccess
 }
 
 export function resolveLockedQrGenerateApiUrl(configuredUrl: string) {
-  if (configuredUrl !== QR_GENERATE_LOCKED_URL) {
+  if (configuredUrl.trim() !== QR_GENERATE_LOCKED_URL) {
     throw new QrGenerateError({
       message: QR_GENERATE_ERROR_MESSAGES.network,
       status: 500,
@@ -151,7 +164,11 @@ export async function requestQrGenerateFromUpstream(options: {
   try {
     const response = await fetchImpl(url, {
       method: 'POST',
-      headers: {'content-type': 'application/json', accept: 'application/json'},
+      headers: {
+        'content-type': 'application/json',
+        accept: 'application/json, text/plain, */*',
+        'user-agent': 'verify-cdp-next-v3/1.0',
+      },
       body: JSON.stringify({hvalue: options.hvalue}),
       signal: controller.signal,
       cache: 'no-store',
@@ -159,7 +176,11 @@ export async function requestQrGenerateFromUpstream(options: {
 
     let payload: unknown;
     try {
-      payload = await response.json();
+      // The upstream service may return JSON with a non-standard or missing
+      // content-type header. Parse the body explicitly instead of relying on
+      // Response.json() content-type handling.
+      const rawBody = await response.text();
+      payload = JSON.parse(rawBody);
     } catch {
       if (!response.ok) {
         throw new QrGenerateError({
@@ -195,10 +216,12 @@ export async function requestQrGenerateFromUpstream(options: {
         code: 'timeout',
       });
     }
+    const causeMessage = getNetworkCause(error);
     throw new QrGenerateError({
       message: QR_GENERATE_ERROR_MESSAGES.network,
       status: 502,
       code: 'network',
+      causeMessage,
     });
   } finally {
     clearTimeout(timeout);

@@ -1,8 +1,7 @@
 'use client';
 
 import JSZip from 'jszip';
-import QRCode from 'qrcode';
-import {useCallback, useEffect, useMemo, useState} from 'react';
+import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {usePatternLibrary} from '@/hooks/usePatternLibrary';
 import {CDP_PREVIEW_RENDER_SCALE, CDP_RENDER_SCALE, generateV3Matrix, hvalueErrorMessage, normalizeCDPSettings, renderRectangularCDPToCanvas, renderV3QrPatternToCanvas, STANDARD_CDP_SETTINGS, validateHvalue, validateV3Payload, withGreyTextureStyleTrace} from '@/lib/cdp';
 import {HvalueValidationError} from '@/lib/cdp/hvalue';
@@ -10,12 +9,14 @@ import {ApiClientError, fetchApi} from '@/lib/api-client';
 import {API_BASE} from '@/lib/app-constants';
 import {docToSettings, makeRandomSeed, sanitizeFilename} from '@/lib/pattern-helpers';
 import type {BatchPattern, GeneratorSettings, PatternDoc, PatternPreview} from '@/lib/types';
+import type {QrGenerateSuccess} from '@/lib/cdp/qr-generate';
+import {renderApiQrToCanvas, V3_LOCKED_QR_MARGIN_MODULES, V3_LOCKED_QR_MODULE_COUNT} from '@/lib/cdp/qr-canvas';
 
 const MAX_BATCH_COUNT = 100;
 const MAX_SEED_LENGTH = 24;
 const LIVE_PREVIEW_DEBOUNCE_MS = 120;
+const DEFAULT_QR_HVALUE = 'TELKOM';
 const PAYLOAD_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-const LOCKED_QR_PAYLOAD = 'https://puragroup.com';
 
 type PayloadDraft = {payload: string; hvalue: string};
 
@@ -70,8 +71,9 @@ function applyPayloadDraftToSettings(settings: GeneratorSettings, draft: Payload
     payload: sanitized.payload,
     payload1: undefined,
     payload2: undefined,
-    qrPayload: LOCKED_QR_PAYLOAD,
-    payloadQr: LOCKED_QR_PAYLOAD,
+    qrPayload: settings.qrPayload,
+    payloadQr: settings.payloadQr,
+    qr_hvalue: draft.hvalue,
   };
 }
 
@@ -95,7 +97,7 @@ export function useGeneratorWorkspace() {
   const [settings, setSettings] = useState<GeneratorSettings>(STANDARD_CDP_SETTINGS);
   const [payloadDraft, setPayloadDraft] = useState<PayloadDraft>(() => ({
     payload: sanitizeCdpPayload(STANDARD_CDP_SETTINGS.payload ?? '') || makeRandomPayload(),
-    hvalue: '',
+    hvalue: DEFAULT_QR_HVALUE,
   }));
   const [batchCount, setBatchCount] = useState(10);
   const [seedLength, setSeedLength] = useState(24);
@@ -108,7 +110,25 @@ export function useGeneratorWorkspace() {
   const [saveConfirmOpen, setSaveConfirmOpen] = useState(false);
   const [batchConfirmOpen, setBatchConfirmOpen] = useState(false);
   const [processingMessage, setProcessingMessage] = useState('');
+  const qrCache = useRef(new Map<string, QrGenerateSuccess>());
+  const [qrLoading, setQrLoading] = useState(false);
+  const [qrError, setQrError] = useState<string | null>(null);
   const patternLibrary = usePatternLibrary(API_BASE);
+
+  const getQr = useCallback(async (hvalue: string) => {
+    const cached = qrCache.current.get(hvalue);
+    if (cached) return cached;
+    setQrLoading(true);
+    setQrError(null);
+    try {
+      const result = await fetchApi<QrGenerateSuccess>(`${API_BASE}/qr/generate`, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({hvalue})});
+      qrCache.current.set(hvalue, result.data);
+      return result.data;
+    } catch (error) {
+      setQrError(error instanceof ApiClientError ? error.message : 'Gagal menghubungi layanan QR. Proses dihentikan.');
+      throw error;
+    } finally { setQrLoading(false); }
+  }, []);
 
   const generationError = useMemo(() => {
     if (seedLength < 1 || seedLength > MAX_SEED_LENGTH) return `Panjang seed harus 1 sampai ${MAX_SEED_LENGTH} karakter.`;
@@ -141,8 +161,8 @@ export function useGeneratorWorkspace() {
     setSettings((current) => ({
       ...current,
       seed: previewSeed,
-        qrPayload: LOCKED_QR_PAYLOAD,
-          payloadQr: LOCKED_QR_PAYLOAD,
+        qrPayload: undefined,
+        payloadQr: undefined,
       payload: undefined,
       payload1: undefined,
       payload2: undefined,
@@ -178,7 +198,27 @@ export function useGeneratorWorkspace() {
   }, [patternLibrary.loadPatterns]);
 
   /** Renders a pattern into an offscreen canvas for saving and downloading. */
-  const renderCompositePattern = useCallback(async (patternSettings: GeneratorSettings, renderScale = CDP_RENDER_SCALE) => {
+  const renderCompositePattern = useCallback(async (patternSettings: GeneratorSettings, qrOrScale?: QrGenerateSuccess | number, requestedScale = CDP_RENDER_SCALE) => {
+    const renderScale = typeof qrOrScale === 'number' ? qrOrScale : requestedScale;
+    const qr = typeof qrOrScale === 'number' || !qrOrScale
+      ? patternSettings.qr_image
+        ? {
+            qr_payload: patternSettings.qrPayload ?? '',
+            qr_hvalue: patternSettings.qr_hvalue ?? '',
+            qr_secret1: patternSettings.qr_secret1 ?? '',
+            qr_secret2: patternSettings.qr_secret2 ?? '',
+            qr_image: patternSettings.qr_image,
+          }
+        : await getQr(validateHvalue(patternSettings.qr_hvalue ?? ''))
+      : qrOrScale;
+    Object.assign(patternSettings, {
+      qrPayload: qr.qr_payload,
+      payloadQr: qr.qr_payload,
+      qr_hvalue: qr.qr_hvalue,
+      qr_secret1: qr.qr_secret1,
+      qr_secret2: qr.qr_secret2,
+      qr_image: qr.qr_image,
+    });
     const normalized = normalizeCDPSettings(patternSettings);
     const renderSettings = {
       ...normalized,
@@ -188,18 +228,9 @@ export function useGeneratorWorkspace() {
     const qrCanvas = document.createElement('canvas');
     const payload = resolveV3Payload(normalized);
     const qrSize = renderSettings.gridSize * renderSettings.dotSize;
-    const qrMarginModules = 1;
-    const qrModel = QRCode.create(LOCKED_QR_PAYLOAD, {errorCorrectionLevel: 'M'});
-    const qrModuleCount = qrModel.modules.size;
-    await QRCode.toCanvas(qrCanvas, LOCKED_QR_PAYLOAD, {
-      errorCorrectionLevel: 'M',
-      margin: qrMarginModules,
-      color: {
-        dark: '#000000',
-        light: '#FFFFFF',
-      },
-      width: qrSize,
-    });
+    const qrMarginModules = V3_LOCKED_QR_MARGIN_MODULES;
+    const qrModuleCount = V3_LOCKED_QR_MODULE_COUNT;
+    await renderApiQrToCanvas(qr.qr_image, qrCanvas, qrSize);
     const fixedPatternHeight = Math.max(1, Math.round(qrCanvas.height * (qrModuleCount / (qrModuleCount + qrMarginModules * 2))));
     renderRectangularCDPToCanvas({rows: 64, columns: 32, cells: generateV3Matrix(payload)}, patternCanvas, {...renderSettings, payload}, {
       targetHeight: fixedPatternHeight,
@@ -208,7 +239,7 @@ export function useGeneratorWorkspace() {
     const compositeCanvas = document.createElement('canvas');
     const layout = renderV3QrPatternToCanvas(qrCanvas, patternCanvas, compositeCanvas, qrModuleCount, qrMarginModules, {pattern: payload});
     return {canvas: compositeCanvas, layout};
-  }, []);
+  }, [getQr]);
 
   const makeSettingsForSeed = useCallback(async (baseSettings: GeneratorSettings, seed: string) => {
     const payload = sanitizeCdpPayload(baseSettings.payload ?? baseSettings.payload1 ?? seed) || makeRandomPayload();
@@ -217,14 +248,15 @@ export function useGeneratorWorkspace() {
       payload,
       payload1: undefined,
       payload2: undefined,
-      payloadQr: LOCKED_QR_PAYLOAD,
-      qrPayload: LOCKED_QR_PAYLOAD,
+      payloadQr: baseSettings.payloadQr,
+      qrPayload: baseSettings.qrPayload,
+      qr_hvalue: baseSettings.qr_hvalue,
     } satisfies GeneratorSettings;
   }, []);
 
   const buildPatternDocPayload = useCallback((patternSettings: GeneratorSettings, layout: Awaited<ReturnType<typeof renderCompositePattern>>['layout'], imageData: string) => {
     const payload = resolveV3Payload(patternSettings);
-    const payloadQr = LOCKED_QR_PAYLOAD;
+    const payloadQr = patternSettings.qrPayload;
     const serial = payload || patternSettings.seed;
     return {
       id: serial,
@@ -237,6 +269,10 @@ export function useGeneratorWorkspace() {
       payload_2: null,
       payload_qr: payloadQr,
       qr_payload: payloadQr,
+      qr_hvalue: patternSettings.qr_hvalue,
+      qr_secret1: patternSettings.qr_secret1,
+      qr_secret2: patternSettings.qr_secret2,
+      qr_image: patternSettings.qr_image,
       pattern_payload: payload,
       pattern_seed: serial,
       layout_version: 'v3-qr-pattern',
@@ -264,6 +300,10 @@ export function useGeneratorWorkspace() {
     let cancelled = false;
     const livePreviewSettings = applyPayloadDraftToSettings(settings, sanitizePayloadDraft(payloadDraft));
 
+    if (getHiddenValueError(payloadDraft.hvalue) || !livePreviewSettings.payload) {
+      return () => { cancelled = true; };
+    }
+
     const timeoutId = window.setTimeout(() => void (async () => {
       try {
         const {canvas} = await renderCompositePattern(livePreviewSettings, CDP_PREVIEW_RENDER_SCALE);
@@ -271,7 +311,12 @@ export function useGeneratorWorkspace() {
           setPreviewImageData(canvas.toDataURL('image/png'));
         }
       } catch (error) {
-        console.error('Failed to render generator preview', error);
+        // Expected API/image failures are surfaced through the generator status UI.
+        // Do not log them as uncaught client errors: Turbopack treats console.error
+        // during rendering as an overlay-worthy exception.
+        if (!cancelled && !(error instanceof ApiClientError)) {
+          setQrError(error instanceof Error ? error.message : 'QR tidak dapat dirender.');
+        }
       }
     })(), LIVE_PREVIEW_DEBOUNCE_MS);
 
@@ -279,7 +324,7 @@ export function useGeneratorWorkspace() {
       cancelled = true;
       window.clearTimeout(timeoutId);
     };
-  }, [payloadDraft, renderCompositePattern, settings]);
+  }, [payloadDraft.hvalue, payloadDraft.payload, renderCompositePattern, settings]);
 
   /** Downloads a rendered pattern canvas as PNG. */
   const downloadCanvas = useCallback((canvas: HTMLCanvasElement, seed: string, gridSize: number) => {
@@ -481,6 +526,8 @@ export function useGeneratorWorkspace() {
     generationError,
     batchPatterns,
     isSaving,
+    qrLoading,
+    qrError,
     previewImageData,
     previewSettings,
     setPreviewSettings,

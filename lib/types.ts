@@ -13,6 +13,10 @@ export interface GeneratorSettings {
   payload2?: string;
   payloadQr?: string;
   qrPayload?: string;
+  qr_hvalue?: string;
+  qr_secret1?: string;
+  qr_secret2?: string;
+  qr_image?: string;
   style: PatternStyle;
   greyTextureVersion?: GreyTextureVersion;
   addMarkers: boolean;

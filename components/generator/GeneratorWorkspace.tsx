@@ -23,6 +23,8 @@ export function GeneratorWorkspace() {
     setSeedLength,
     generationError,
     isSaving,
+    qrLoading,
+    qrError,
     previewImageData,
     previewSettings,
     setPreviewSettings,
@@ -74,6 +76,8 @@ export function GeneratorWorkspace() {
             setSeedLength={setSeedLength}
             generationError={generationError}
             isSaving={isSaving}
+            qrLoading={qrLoading}
+            qrError={qrError}
             greyTextureVersion={settings.greyTextureVersion ?? 'grey-v3'}
             setGreyTextureVersion={(greyTextureVersion) => setSettings((current) => ({...current, greyTextureVersion}))}
             settings={settings}

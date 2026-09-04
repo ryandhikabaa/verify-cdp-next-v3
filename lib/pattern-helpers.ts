@@ -22,7 +22,7 @@ export function docToSettings(doc: PatternDoc, current: GeneratorSettings): Gene
   const serial = doc.id.toUpperCase().replace(/[^A-Z0-9]/g, '');
   const payload1 = doc.payload_1 ?? doc.pattern_payload ?? doc.payload ?? serial.slice(0, 12);
   const payload2 = doc.payload_2 ?? serial.slice(12, 24);
-  const payloadQr = doc.payload_qr ?? doc.qr_payload ?? 'https://puragroup.com';
+  const payloadQr = doc.payload_qr ?? doc.qr_payload;
   return normalizeCDPSettings({
     ...current,
     seed: doc.id,
@@ -31,6 +31,10 @@ export function docToSettings(doc: PatternDoc, current: GeneratorSettings): Gene
     payload2,
     payloadQr,
     qrPayload: payloadQr,
+    qr_hvalue: doc.qr_hvalue,
+    qr_secret1: doc.qr_secret1,
+    qr_secret2: doc.qr_secret2,
+    qr_image: doc.qr_image,
     dotDensity: doc.density,
     gridSize: STANDARD_CDP_SETTINGS.gridSize,
     dotSize: STANDARD_CDP_SETTINGS.dotSize,

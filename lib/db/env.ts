@@ -7,7 +7,7 @@ export const LOCKED_QR_GENERATE_API_URL = 'https://authenticity-qr.pstlocal.net/
 
 function readEnv(name: string, fallback = '') {
   const value = process.env[name];
-  return typeof value === 'string' && value.length > 0 ? value : fallback;
+  return typeof value === 'string' && value.trim().length > 0 ? value.trim() : fallback;
 }
 
 export function getDotveraDatabaseName() {

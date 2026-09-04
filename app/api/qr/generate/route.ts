@@ -10,10 +10,20 @@ import {getQrGenerateApiUrl} from '@/lib/db/env';
 
 function qrGenerateErrorResponse(error: unknown) {
   if (error instanceof QrGenerateError) {
+    console.error('[qr/generate]', {
+      code: error.code,
+      status: error.status,
+      upstreamStatus: error.upstreamStatus,
+      cause: error.causeMessage,
+    });
     return apiError({
       status: error.status,
       message: error.message,
-      data: error.upstreamStatus == null ? null : {upstream_status: error.upstreamStatus},
+      data: {
+        code: error.code,
+        ...(process.env.NODE_ENV === 'development' && error.causeMessage ? {cause: error.causeMessage} : {}),
+        ...(error.upstreamStatus == null ? {} : {upstream_status: error.upstreamStatus}),
+      },
     });
   }
   return apiError({status: 502, message: QR_GENERATE_ERROR_MESSAGES.network});

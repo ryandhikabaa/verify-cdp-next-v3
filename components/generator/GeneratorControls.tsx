@@ -45,6 +45,8 @@ export function GeneratorControls({
   setSeedLength,
   generationError,
   isSaving,
+  qrLoading,
+  qrError,
   greyTextureVersion,
   setGreyTextureVersion,
   settings,
@@ -63,6 +65,8 @@ export function GeneratorControls({
   setSeedLength: (value: number) => void;
   generationError: string | null;
   isSaving: boolean;
+  qrLoading: boolean;
+  qrError: string | null;
   greyTextureVersion: GreyTextureVersion;
   setGreyTextureVersion: (value: GreyTextureVersion) => void;
   settings: GeneratorSettings;
@@ -166,7 +170,7 @@ export function GeneratorControls({
           <button
             type="button"
             onClick={onSave}
-            disabled={isSaving || Boolean(generationError)}
+            disabled={isSaving || qrLoading || Boolean(generationError)}
             className="inline-flex min-h-9 items-center justify-center gap-1.5 rounded-lg bg-cyan-700 px-3.5 text-xs font-bold text-white transition hover:bg-cyan-800 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50"
           >
             {isSaving ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Database className="h-4 w-4" />}
@@ -176,7 +180,7 @@ export function GeneratorControls({
           <button
             type="button"
             onClick={onGenerateBatch}
-            disabled={isSaving || Boolean(generationError)}
+            disabled={isSaving || qrLoading || Boolean(generationError)}
             className="inline-flex min-h-9 items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3.5 text-xs font-bold text-slate-700 transition hover:border-slate-300 hover:bg-slate-50 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50"
           >
             {isSaving ? <LoaderCircle className="h-4 w-4 animate-spin" /> : null}
@@ -186,12 +190,15 @@ export function GeneratorControls({
           <button
             type="button"
             onClick={onDownload}
+            disabled={isSaving || qrLoading || Boolean(generationError)}
             className="inline-flex min-h-9 items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3.5 text-xs font-bold text-slate-700 transition hover:border-slate-300 hover:bg-slate-50 active:scale-[0.99]"
           >
             <Download className="h-4 w-4" />
             Download
           </button>
         </div>
+        {qrLoading ? <div className="text-[10px] font-semibold text-cyan-700">Memuat QR custom...</div> : null}
+        {qrError ? <div className="text-[10px] font-semibold text-rose-600">{qrError}</div> : null}
       </div>
 
       <div className="rounded-lg border border-slate-200 bg-slate-50/70 p-2.5">
