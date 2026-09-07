@@ -154,6 +154,7 @@ export async function requestQrGenerateFromUpstream(options: {
   url: string;
   fetchImpl?: typeof fetch;
   timeoutMs?: number;
+  onRawResponse?: (raw: {httpStatus: number; rawBody: string}) => void | Promise<void>;
 }): Promise<QrGenerateSuccess> {
   const url = resolveLockedQrGenerateApiUrl(options.url);
   const timeoutMs = options.timeoutMs ?? QR_GENERATE_TIMEOUT_MS;
@@ -175,13 +176,15 @@ export async function requestQrGenerateFromUpstream(options: {
     });
 
     let payload: unknown;
+    let rawBody = '';
     try {
       // The upstream service may return JSON with a non-standard or missing
       // content-type header. Parse the body explicitly instead of relying on
       // Response.json() content-type handling.
-      const rawBody = await response.text();
+      rawBody = await response.text();
       payload = JSON.parse(rawBody);
     } catch {
+      await options.onRawResponse?.({httpStatus: response.status, rawBody});
       if (!response.ok) {
         throw new QrGenerateError({
           message: qrGenerateHttpErrorMessage(response.status),
@@ -196,6 +199,11 @@ export async function requestQrGenerateFromUpstream(options: {
         code: 'malformed',
       });
     }
+
+    // Expose the exact upstream body to the caller (e.g. server logging) while
+    // keeping this module free of any Node-only (filesystem) imports so it can
+    // still be imported from client bundles.
+    await options.onRawResponse?.({httpStatus: response.status, rawBody});
 
     if (response.status !== 200) {
       throw new QrGenerateError({

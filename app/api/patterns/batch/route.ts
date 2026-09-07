@@ -1,6 +1,7 @@
 import {NextRequest} from 'next/server';
 import {apiError, apiSuccess} from '@/lib/api-response';
 import {prisma} from '@/lib/db/prisma';
+import {writeDebugLog} from '@/lib/debug-log';
 
 export async function POST(request: NextRequest) {
   try {
@@ -16,7 +17,18 @@ export async function POST(request: NextRequest) {
       patternHeightPx: (doc.pattern_height_px as number) ?? null, gapPx: (doc.gap_px as number) ?? null,
       canvasWidthPx: (doc.canvas_width_px as number) ?? null, canvasHeightPx: (doc.canvas_height_px as number) ?? null,
     }));
-    if (docs.some((doc) => Object.values(doc).slice(0, 7).some((value) => value === ''))) return apiError({status: 400, message: 'Metadata QR dan payload pattern wajib diisi.'});
+    if (docs.some((doc: Record<string, unknown>) => Object.values(doc).slice(0, 7).some((value) => value === ''))) return apiError({status: 400, message: 'Metadata QR dan payload pattern wajib diisi.'});
+    await writeDebugLog({
+      event: 'batch-save',
+      count: docs.length,
+      docs: docs.map((doc: Record<string, unknown>) => ({
+        qr_hvalue: doc.qrHvalue,
+        qr_payload: doc.qrPayload,
+        qr_secret1: doc.qrSecret1,
+        qr_secret2: doc.qrSecret2,
+        pattern_payload: doc.patternPayload,
+      })),
+    });
     await prisma.patternGenerated.createMany({data: docs});
     return apiSuccess({count: docs.length}, {message: 'Patterns saved'});
   } catch (error) {

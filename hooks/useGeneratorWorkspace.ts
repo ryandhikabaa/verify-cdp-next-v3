@@ -7,7 +7,7 @@ import {CDP_PREVIEW_RENDER_SCALE, CDP_RENDER_SCALE, generateV3Matrix, hvalueErro
 import {HvalueValidationError} from '@/lib/cdp/hvalue';
 import {ApiClientError, fetchApi} from '@/lib/api-client';
 import {API_BASE} from '@/lib/app-constants';
-import {docToSettings, makeRandomSeed, sanitizeFilename} from '@/lib/pattern-helpers';
+import {canvasFromDataUrl, docToSettings, makeRandomSeed, sanitizeFilename} from '@/lib/pattern-helpers';
 import type {BatchPattern, GeneratorSettings, PatternDoc, PatternPreview} from '@/lib/types';
 import type {QrGenerateSuccess} from '@/lib/cdp/qr-generate';
 import {renderApiQrToCanvas, V3_LOCKED_QR_MARGIN_MODULES, V3_LOCKED_QR_MODULE_COUNT} from '@/lib/cdp/qr-canvas';
@@ -89,6 +89,13 @@ function makeAutomaticBatchBase(settings: GeneratorSettings): GeneratorSettings 
     payload2: '',
     payloadQr: undefined,
     qrPayload: undefined,
+    // Clear any QR state carried over from a previous generate so a second
+    // batch re-hits the QR API instead of reusing a stale qr_image with empty
+    // qrPayload (which the backend rejects as missing metadata).
+    qr_hvalue: undefined,
+    qr_secret1: undefined,
+    qr_secret2: undefined,
+    qr_image: undefined,
   };
 }
 
@@ -115,14 +122,18 @@ export function useGeneratorWorkspace() {
   const [qrError, setQrError] = useState<string | null>(null);
   const patternLibrary = usePatternLibrary(API_BASE);
 
-  const getQr = useCallback(async (hvalue: string) => {
-    const cached = qrCache.current.get(hvalue);
-    if (cached) return cached;
+  const getQr = useCallback(async (hvalue: string, skipCache = false) => {
+    if (!skipCache) {
+      const cached = qrCache.current.get(hvalue);
+      if (cached) return cached;
+    }
     setQrLoading(true);
     setQrError(null);
     try {
       const result = await fetchApi<QrGenerateSuccess>(`${API_BASE}/qr/generate`, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({hvalue})});
-      qrCache.current.set(hvalue, result.data);
+      // Batch requests bypass the cache so each item gets a distinct QR from the
+      // upstream. Do not pollute the cache with one of many same-key results.
+      if (!skipCache) qrCache.current.set(hvalue, result.data);
       return result.data;
     } catch (error) {
       setQrError(error instanceof ApiClientError ? error.message : 'Gagal menghubungi layanan QR. Proses dihentikan.');
@@ -198,7 +209,12 @@ export function useGeneratorWorkspace() {
   }, [patternLibrary.loadPatterns]);
 
   /** Renders a pattern into an offscreen canvas for saving and downloading. */
-  const renderCompositePattern = useCallback(async (patternSettings: GeneratorSettings, qrOrScale?: QrGenerateSuccess | number, requestedScale = CDP_RENDER_SCALE) => {
+  const renderCompositePattern = useCallback(async (
+    patternSettings: GeneratorSettings,
+    qrOrScale?: QrGenerateSuccess | number,
+    requestedScale = CDP_RENDER_SCALE,
+    options?: {skipQrCache?: boolean},
+  ) => {
     const renderScale = typeof qrOrScale === 'number' ? qrOrScale : requestedScale;
     const qr = typeof qrOrScale === 'number' || !qrOrScale
       ? patternSettings.qr_image
@@ -209,12 +225,17 @@ export function useGeneratorWorkspace() {
             qr_secret2: patternSettings.qr_secret2 ?? '',
             qr_image: patternSettings.qr_image,
           }
-        : await getQr(validateHvalue(patternSettings.qr_hvalue ?? ''))
+        : await getQr(validateHvalue(patternSettings.qr_hvalue ?? ''), options?.skipQrCache)
       : qrOrScale;
+    // The upstream API echoes back the submitted hvalue but generates a fresh,
+    // distinct QR (secret1/secret2/qrcode/imgOutput) per request even when the
+    // hvalue is identical. Store the user's input as the canonical hidden value
+    // (never the upstream echo) so the stored/displayed value stays constant
+    // across every batch item, while the QR secrets are kept as-is.
     Object.assign(patternSettings, {
       qrPayload: qr.qr_payload,
       payloadQr: qr.qr_payload,
-      qr_hvalue: qr.qr_hvalue,
+      qr_hvalue: patternSettings.qr_hvalue ?? qr.qr_hvalue,
       qr_secret1: qr.qr_secret1,
       qr_secret2: qr.qr_secret2,
       qr_image: qr.qr_image,
@@ -240,7 +261,7 @@ export function useGeneratorWorkspace() {
     const layout = renderV3QrPatternToCanvas(qrCanvas, patternCanvas, compositeCanvas, qrModuleCount, qrMarginModules, {
       pattern: payload,
       qrcode: qr.qr_payload,
-      hvalue: qr.qr_hvalue,
+      hvalue: patternSettings.qr_hvalue ?? qr.qr_hvalue,
       // Footer scale stays locked for preview vs generated/save. Extra overall
       // canvas height is added by the renderer so the last payload row is not
       // clipped without changing these proportions.
@@ -441,17 +462,22 @@ export function useGeneratorWorkspace() {
       await waitForLoadingPaint();
       const safeCount = Math.min(Math.max(batchCount || 1, 1), MAX_BATCH_COUNT);
       const seeds = createUniqueSeeds(safeCount);
-      const batchBaseSettings = {
-        ...makeAutomaticBatchBase(settings),
-        qr_hvalue: payloadDraft.hvalue,
-      };
-      const generated = await Promise.all(seeds.map(async (seed) => {
-        return {id: seed, settings: await makeSettingsForSeed(batchBaseSettings, seed)} satisfies BatchPattern;
-      }));
-      const docs = await Promise.all(generated.map(async (pattern) => {
-        const {canvas, layout} = await renderCompositePattern(pattern.settings);
-        return buildPatternDocPayload(pattern.settings, layout, canvas.toDataURL('image/png'));
-      }));
+      const batchBaseSettings = makeAutomaticBatchBase(settings);
+      const generated: BatchPattern[] = [];
+      for (const seed of seeds) {
+        // Every batch item shares the user's hidden value, but each item hits
+        // the QR API once (cache bypassed) so the upstream returns a distinct
+        // QR per request. The stored hvalue stays equal to the user's input.
+        const perSeedBase = {...batchBaseSettings, qr_hvalue: batchBaseSettings.qr_hvalue ?? payloadDraft.hvalue};
+        generated.push({id: seed, settings: await makeSettingsForSeed(perSeedBase, seed)});
+      }
+      // Render sequentially (not Promise.all) so each QR API call completes
+      // successfully before the next one starts, keeping the batch deterministic.
+      const docs = [];
+      for (const pattern of generated) {
+        const {canvas, layout} = await renderCompositePattern(pattern.settings, undefined, CDP_RENDER_SCALE, {skipQrCache: true});
+        docs.push(buildPatternDocPayload(pattern.settings, layout, canvas.toDataURL('image/png')));
+      }
 
       setBatchPatterns(generated);
       setSettings(generated[0].settings);
@@ -479,7 +505,7 @@ export function useGeneratorWorkspace() {
     batchPatterns.forEach((pattern, index) => {
       window.setTimeout(() => {
         void (async () => {
-          const {canvas} = await renderCompositePattern(pattern.settings);
+          const {canvas} = await renderCompositePattern(pattern.settings, undefined, CDP_RENDER_SCALE, {skipQrCache: true});
           downloadCanvas(canvas, pattern.id, pattern.settings.gridSize);
         })();
       }, index * 120);
@@ -490,6 +516,14 @@ export function useGeneratorWorkspace() {
   const downloadDoc = useCallback((doc: PatternDoc) => {
     const docSettings = docToSettings(doc, settings);
     void (async () => {
+      // Stored docs already carry the full rendered PNG. Use it directly so a
+      // download never re-hits the QR API (which requires a hidden value that
+      // the catalog list does not expose).
+      if (doc.image_data) {
+        const canvas = await canvasFromDataUrl(doc.image_data);
+        downloadCanvas(canvas, doc.id, docSettings.gridSize);
+        return;
+      }
       const {canvas} = await renderCompositePattern(docSettings);
       downloadCanvas(canvas, doc.id, docSettings.gridSize);
     })();
@@ -507,7 +541,10 @@ export function useGeneratorWorkspace() {
     const zip = new JSZip();
     for (const doc of docsToDownload) {
       const docSettings = docToSettings(doc, settings);
-      const {canvas} = await renderCompositePattern(docSettings);
+      // Prefer the already-stored PNG so downloads do not re-hit the QR API.
+      const canvas = doc.image_data
+        ? await canvasFromDataUrl(doc.image_data)
+        : (await renderCompositePattern(docSettings)).canvas;
       const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'));
       if (blob) {
         zip.file(`CDP_${sanitizeFilename(doc.id)}_${docSettings.gridSize}x${docSettings.gridSize}.png`, blob);
