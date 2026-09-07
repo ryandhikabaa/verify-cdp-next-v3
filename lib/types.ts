@@ -124,7 +124,6 @@ export interface VerificationRecord {
   qr_format?: string | null;
   qr_detected?: boolean;
   qr_bounds?: Record<string, unknown> | null;
-  pattern_crop_bounds?: Record<string, unknown> | null;
   pattern_decode_payload?: string | null;
   payload_mode?: 'legacy' | 'encrypted' | 'three-part' | 'unknown' | null;
   decrypt_succeeded?: boolean | null;

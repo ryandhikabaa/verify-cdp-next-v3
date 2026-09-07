@@ -74,7 +74,6 @@ export function mapDetectionToPublicHistoryItem(row: PatternDetection) {
     qr_format: row.qrFormat,
     qr_detected: row.qrDetected,
     qr_bounds: row.qrBounds,
-    pattern_crop_bounds: row.patternCropBounds,
     pattern_decode_payload: row.patternDecodePayload,
     payload_mode: row.payloadMode,
     decrypt_succeeded: row.decryptSucceeded,

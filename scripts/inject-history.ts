@@ -23,9 +23,6 @@ type DetectionInput = {
   qrBounds: unknown;
   patternPayload: string | null;
   patternDecodePayload: string | null;
-  patternCropBounds: unknown;
-  rectangularScore: number | null;
-  patternConfidence: number | null;
   payloadMode: string | null;
   decryptSucceeded: boolean | null;
   checksumValid: boolean | null;
@@ -51,9 +48,6 @@ const SAMPLES: DetectionInput[] = [
     qrBounds: {x: 120, y: 80, width: 220, height: 220},
     patternPayload: '3R9K221ASTRA7A4F21C',
     patternDecodePayload: '3R9K221ASTRA7A4F21C',
-    patternCropBounds: {x: 360, y: 140, width: 200, height: 200},
-    rectangularScore: 0.91,
-    patternConfidence: 0.97,
     payloadMode: 'AES-CTR',
     decryptSucceeded: true,
     checksumValid: true,
@@ -77,9 +71,6 @@ const SAMPLES: DetectionInput[] = [
     qrBounds: {x: 130, y: 95, width: 210, height: 210},
     patternPayload: '4B2L119ASTRA000000',
     patternDecodePayload: '4B2L119ASTRA000000',
-    patternCropBounds: {x: 350, y: 150, width: 190, height: 190},
-    rectangularScore: 0.44,
-    patternConfidence: 0.38,
     payloadMode: 'AES-CTR',
     decryptSucceeded: false,
     checksumValid: false,
@@ -103,9 +94,6 @@ const SAMPLES: DetectionInput[] = [
     qrBounds: {x: 110, y: 70, width: 230, height: 230},
     patternPayload: '5P2114YAMAHA7A4F21C',
     patternDecodePayload: '5P2114YAMAHA7A4F21C',
-    patternCropBounds: {x: 370, y: 130, width: 210, height: 210},
-    rectangularScore: 0.93,
-    patternConfidence: 0.98,
     payloadMode: 'AES-CTR',
     decryptSucceeded: true,
     checksumValid: true,
@@ -129,9 +117,6 @@ const SAMPLES: DetectionInput[] = [
     qrBounds: {x: 125, y: 85, width: 215, height: 215},
     patternPayload: '8K0772HONDA0000000',
     patternDecodePayload: '8K0772HONDA0000000',
-    patternCropBounds: {x: 355, y: 145, width: 195, height: 195},
-    rectangularScore: 0.68,
-    patternConfidence: 0.61,
     payloadMode: 'AES-CTR',
     decryptSucceeded: true,
     checksumValid: false,
@@ -155,9 +140,6 @@ const SAMPLES: DetectionInput[] = [
     qrBounds: {x: 115, y: 75, width: 225, height: 225},
     patternPayload: '6M3441SUZUKIE5F2B99',
     patternDecodePayload: '6M3441SUZUKIE5F2B99',
-    patternCropBounds: {x: 365, y: 135, width: 205, height: 205},
-    rectangularScore: 0.94,
-    patternConfidence: 0.99,
     payloadMode: 'AES-CTR',
     decryptSucceeded: true,
     checksumValid: true,
@@ -196,9 +178,6 @@ async function main() {
         qrBounds: sample.qrBounds as object,
         patternPayload: sample.patternPayload,
         patternDecodePayload: sample.patternDecodePayload,
-        patternCropBounds: sample.patternCropBounds as object,
-        rectangularScore: sample.rectangularScore,
-        patternConfidence: sample.patternConfidence,
         payloadMode: sample.payloadMode,
         decryptSucceeded: sample.decryptSucceeded,
         checksumValid: sample.checksumValid,

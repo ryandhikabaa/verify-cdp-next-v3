@@ -62,7 +62,6 @@ export async function POST(request: NextRequest) {
   const qrFormat = sanitizeText(body.qr_format, 50);
   const qrDetected = body.qr_detected === true;
   const qrBounds = sanitizeJsonObject(body.qr_bounds);
-  const patternCropBounds = sanitizeJsonObject(body.pattern_crop_bounds);
   const patternDecodePayload = sanitizeText(body.pattern_decode_payload, LABEL_MAX_LENGTH);
   const createdAt = normalizeTimestamp(body.created_at);
   const updatedAt = normalizeTimestamp(body.updated_at);
@@ -151,7 +150,6 @@ export async function POST(request: NextRequest) {
     qrFormat,
     qrDetected,
     qrBounds,
-    patternCropBounds,
     patternDecodePayload,
     createdAt,
     updatedAt,
@@ -220,7 +218,6 @@ export async function POST(request: NextRequest) {
           qrFormat: qrFormat || null,
           qrDetected,
           qrBounds: qrBounds ? (qrBounds as Prisma.InputJsonValue) : undefined,
-          patternCropBounds: patternCropBounds ? (patternCropBounds as Prisma.InputJsonValue) : undefined,
           patternPayload: incomingId.length <= 24 ? incomingId : null,
           patternDecodePayload: patternDecodePayload || rawPayloadText || null,
           payloadMode,

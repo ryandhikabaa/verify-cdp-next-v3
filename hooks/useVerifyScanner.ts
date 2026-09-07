@@ -8,7 +8,6 @@ import {
   RECT_PATTERN_DOT_DENSITY,
   RECT_PATTERN_ROWS,
   addPoint,
-  buildPatternBounds,
   computeV3PatternOrigins,
   decodeV3PatternCanvas,
   distanceBetween,
@@ -40,7 +39,6 @@ type QrDetectionPreview = {
   qrValue: string | null;
   qrFormat: string | null;
   qrBounds: Record<string, unknown> | null;
-  patternCropBounds: Record<string, unknown> | null;
   qrDataUrl: string | null;
   patternDataUrl: string | null;
   leftPatternDataUrl: string | null;
@@ -317,7 +315,6 @@ async function detectQrAnchoredPreview(sourceCanvas: HTMLCanvasElement): Promise
           qrDetected: true, qrValue: qrResult.getText()?.trim() || null,
           qrFormat: qrResult.getBarcodeFormat()?.toString() || 'QR_CODE',
           qrBounds: {topLeft: qrOrigin, topRight: qrCornerTopRight, bottomLeft: qrCornerBottomLeft, bottomRight: qrCornerBottomRight, width: Math.round(qrWidth), height: Math.round(qrHeight)},
-          patternCropBounds: {layout: 'v3-qr-pattern', right: buildPatternBounds(v3PatternOrigin, xUnit, yUnit, patternWidth, patternHeight)},
           qrDataUrl: ENABLE_SCANNER_DEBUG ? qrCanvas?.toDataURL('image/png') ?? null : null,
           patternDataUrl: ENABLE_SCANNER_DEBUG ? v3PatternCanvas.toDataURL('image/png') : null,
           leftPatternDataUrl: null, rightPatternDataUrl: ENABLE_SCANNER_DEBUG ? v3PatternCanvas.toDataURL('image/png') : null,
@@ -355,7 +352,6 @@ async function detectQrAnchoredPreview(sourceCanvas: HTMLCanvasElement): Promise
         width: Math.round(qrWidth),
         height: Math.round(qrHeight),
       },
-      patternCropBounds: null,
       qrDataUrl: ENABLE_SCANNER_DEBUG ? qrCanvas?.toDataURL('image/png') ?? null : null,
       patternDataUrl: null,
       leftPatternDataUrl: null,
@@ -698,7 +694,6 @@ export function useVerifyScanner() {
         qr_format: qrPreview?.qrFormat ?? null,
         qr_detected: qrPreview?.qrDetected ?? false,
         qr_bounds: qrPreview?.qrBounds ?? null,
-        pattern_crop_bounds: qrPreview?.patternCropBounds ?? null,
         layout_version: 'v3-qr-pattern',
         left_pattern_decode_payload: '',
         right_pattern_decode_payload: '',
