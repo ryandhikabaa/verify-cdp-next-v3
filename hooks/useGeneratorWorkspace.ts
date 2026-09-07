@@ -237,7 +237,16 @@ export function useGeneratorWorkspace() {
     });
 
     const compositeCanvas = document.createElement('canvas');
-    const layout = renderV3QrPatternToCanvas(qrCanvas, patternCanvas, compositeCanvas, qrModuleCount, qrMarginModules, {pattern: payload});
+    const layout = renderV3QrPatternToCanvas(qrCanvas, patternCanvas, compositeCanvas, qrModuleCount, qrMarginModules, {
+      pattern: payload,
+      qrcode: qr.qr_payload,
+      hvalue: qr.qr_hvalue,
+      // Footer scale stays locked for preview vs generated/save. Extra overall
+      // canvas height is added by the renderer so the last payload row is not
+      // clipped without changing these proportions.
+      footerScale: renderScale === CDP_PREVIEW_RENDER_SCALE ? 2.3 : 2.8,
+      footerFontScale: 5,
+    });
     return {canvas: compositeCanvas, layout};
   }, [getQr]);
 

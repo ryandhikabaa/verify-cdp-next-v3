@@ -289,6 +289,7 @@ export function getV3QrPatternLayoutMetadata(
   patternHeight: number,
   qrModuleCount: number,
   qrMarginModules = 1,
+  footerScale = 1,
 ): V3QrPatternLayoutMetadata {
   if (![qrWidth, qrHeight, patternWidth, patternHeight, qrModuleCount].every(Number.isFinite) || qrModuleCount <= 0) {
     throw new Error('V3 layout dimensions and QR module count must be positive finite numbers.');
@@ -298,9 +299,13 @@ export function getV3QrPatternLayoutMetadata(
   const rightMarginPx = Math.max(1, Math.round(qrModuleSize));
   // Reserve a deliberately generous print footer: at small physical sizes the
   // payload must remain legible after rasterisation and trimming.
-  const footerHeightPx = Math.max(104, Math.round(patternWidth * 0.46));
+  const footerHeightPx = Math.max(150, Math.round(patternWidth * 0.62 * footerScale));
   const patternY = Math.max(0, Math.floor((qrHeight - patternHeight) / 2));
-  const contentHeightPx = Math.max(qrHeight, patternY + patternHeight) + footerHeightPx;
+  const contentTopHeightPx = Math.max(qrHeight, patternY + patternHeight);
+  // Keep footerScale responsible only for footer/font proportions. Extra canvas
+  // height below the footer gives the last payload row room instead of clipping.
+  const extraCanvasHeightPx = Math.max(1, Math.round(footerHeightPx * 0.32));
+  const contentHeightPx = contentTopHeightPx + footerHeightPx + extraCanvasHeightPx;
   return {
     layoutVersion: 'v3-qr-pattern', qrX: 0, qrY: 0,
     patternX: qrWidth + gapPx, patternY,
@@ -315,9 +320,10 @@ export function renderV3QrPatternToCanvas(
   targetCanvas: HTMLCanvasElement,
   qrModuleCount: number,
   qrMarginModules = 1,
-    labels?: {pattern: string},
+    labels?: {pattern: string; qrcode?: string; hvalue?: string; footerScale?: number; footerFontScale?: number},
 ) {
-  const layout = getV3QrPatternLayoutMetadata(qrCanvas.width, qrCanvas.height, patternCanvas.width, patternCanvas.height, qrModuleCount, qrMarginModules);
+  const footerScale = labels?.footerScale ?? 1;
+  const layout = getV3QrPatternLayoutMetadata(qrCanvas.width, qrCanvas.height, patternCanvas.width, patternCanvas.height, qrModuleCount, qrMarginModules, footerScale);
   targetCanvas.width = layout.contentWidthPx;
   targetCanvas.height = layout.contentHeightPx;
   const ctx = targetCanvas.getContext('2d');
@@ -329,7 +335,13 @@ export function renderV3QrPatternToCanvas(
   ctx.drawImage(patternCanvas, layout.patternX, layout.patternY);
     if (labels?.pattern) {
       const contentWidth = layout.patternX - layout.qrX + layout.patternWidthPx;
-      drawV3PayloadFooter(ctx, labels.pattern, layout.qrX, contentWidth, layout.contentHeightPx - layout.footerHeightPx, layout.footerHeightPx);
+      const footerY = Math.max(layout.qrHeightPx, layout.patternY + layout.patternHeightPx);
+      drawV3PayloadFooter(ctx, {
+        pattern: labels.pattern,
+        qrcode: labels.qrcode ?? '',
+        hvalue: labels.hvalue ?? '',
+        footerFontScale: labels.footerFontScale,
+      }, layout.qrX, contentWidth, footerY, layout.footerHeightPx);
     }
   return layout;
 }
@@ -441,31 +453,64 @@ function drawFooterTwoLineLabel(
   ctx.restore();
 }
 
-function drawV3PayloadFooter(ctx: CanvasRenderingContext2D, payload: string, x: number, width: number, y: number, footerHeight: number) {
-  const value = payload.trim();
-  if (!value) return;
+function drawV3PayloadFooter(
+  ctx: CanvasRenderingContext2D,
+  labels: {pattern: string; qrcode: string; hvalue: string; footerFontScale?: number},
+  x: number,
+  width: number,
+  y: number,
+  footerHeight: number,
+) {
+  const qrcode = labels.qrcode.trim();
+  const hvalue = labels.hvalue.trim();
+  const pattern = labels.pattern.trim();
+  if (!qrcode && !hvalue && !pattern) return;
   ctx.save();
   ctx.fillStyle = '#111111';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  let fontSize = Math.max(24, Math.floor(footerHeight * 0.56));
+  const hasSeparator = Boolean(qrcode && hvalue);
+  const split = Math.ceil(pattern.length / 2);
+  const patternLines = pattern.length > 18 ? [pattern.slice(0, split), pattern.slice(split)] : [pattern];
+  const lines = [qrcode, hvalue, ...patternLines].filter(Boolean);
+  const visualLineCount = lines.length + (hasSeparator ? 1 : 0);
+  // Derive the font from the actual slot height. This is important for the
+  // high-resolution save/batch render, where a ratio-only font can overflow
+  // into the QR area even though the preview looks acceptable when scaled.
+  const slotHeight = footerHeight / visualLineCount;
+  const requestedFontSize = Math.floor(slotHeight * 0.72 * (labels.footerFontScale ?? 1));
+  const maxSlotFontSize = Math.floor(slotHeight * 1.45);
+  let fontSize = Math.max(8, Math.min(requestedFontSize, maxSlotFontSize));
   const maxWidth = width * 0.94;
-  const split = Math.ceil(value.length / 2);
-  const lines = value.length > 18 ? [value.slice(0, split), value.slice(split)] : [value];
   ctx.font = `700 ${fontSize}px Arial, Helvetica, sans-serif`;
   while (fontSize > 8 && lines.some((line) => ctx.measureText(line).width > maxWidth)) {
     fontSize -= 1;
     ctx.font = `700 ${fontSize}px Arial, Helvetica, sans-serif`;
   }
-  const lineHeight = Math.min(fontSize * 1.14, footerHeight / lines.length);
-  // Keep the QR/pattern content area unchanged and bias the label toward the
-  // bottom of the reserved footer. This leaves a clearer separation from the
-  // pattern edge for QR-anchored verifier crops.
-  const lineBlockHeight = lineHeight * lines.length;
-  const centeredOffset = (footerHeight - lineBlockHeight) / 2;
-  const downwardOffset = Math.min(Math.floor(footerHeight * 0.12), Math.max(0, footerHeight - lineBlockHeight));
-  const firstLineY = y + centeredOffset + downwardOffset + lineHeight / 2;
-  lines.forEach((line, index) => ctx.fillText(line, x + width / 2, firstLineY + index * lineHeight));
+  // Add a small amount of breathing room between footer rows while keeping
+  // the complete payload vertically centered inside the footer.
+  const lineHeight = slotHeight * 1.14;
+  const blockHeight = (visualLineCount - 1) * lineHeight;
+  // Keep a little more whitespace directly below the QR/pattern area so the
+  // first footer row does not visually touch the pattern.
+  const topBreathingRoom = footerHeight * 0.60;
+  const bottomBreathingRoom = footerHeight * 0.36;
+  const usableFooterHeight = footerHeight - topBreathingRoom - bottomBreathingRoom;
+  const firstLineY = y + topBreathingRoom + (usableFooterHeight - blockHeight) / 2;
+  lines.forEach((line, index) => {
+    const lineIndex = index + (hasSeparator && index >= 2 ? 1 : 0);
+    ctx.fillText(line, x + width / 2, firstLineY + lineIndex * lineHeight);
+  });
+  if (hasSeparator) {
+    const separatorY = firstLineY + 2 * lineHeight;
+    ctx.strokeStyle = '#111111';
+    ctx.lineWidth = Math.max(4, Math.floor(fontSize * 0.1));
+    // Draw the separator last so it remains visible at high render scales.
+    ctx.beginPath();
+    ctx.moveTo(x + width * 0.08, separatorY);
+    ctx.lineTo(x + width * 0.92, separatorY);
+    ctx.stroke();
+  }
   ctx.restore();
 }
 

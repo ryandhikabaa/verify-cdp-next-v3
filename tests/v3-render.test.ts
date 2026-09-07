@@ -5,11 +5,21 @@ import {getV3QrPatternLayoutMetadata, renderV3QrPatternToCanvas} from '../lib/cd
 
 test('V3 layout uses one QR-module gap and equal-height content', () => {
   const layout = getV3QrPatternLayoutMetadata(290, 290, 320, 290, 21, 1);
+  const footerHeightPx = Math.max(150, Math.round(320 * 0.62));
+  const extraCanvasHeightPx = Math.max(1, Math.round(footerHeightPx * 0.32));
   assert.equal(layout.gapPx, 13);
   assert.equal(layout.rightMarginPx, 13);
   assert.equal(layout.patternX, 303);
   assert.equal(layout.contentWidthPx, 636);
-  assert.equal(layout.contentHeightPx, 437);
+  assert.equal(layout.footerHeightPx, footerHeightPx);
+  assert.equal(layout.contentHeightPx, 290 + footerHeightPx + extraCanvasHeightPx);
+});
+
+test('V3 layout keeps footerScale and adds extra canvas height below the footer', () => {
+  const layout = getV3QrPatternLayoutMetadata(290, 290, 320, 290, 21, 1, 2.3);
+  const footerHeightPx = Math.max(150, Math.round(320 * 0.62 * 2.3));
+  assert.equal(layout.footerHeightPx, footerHeightPx);
+  assert.ok(layout.contentHeightPx > 290 + footerHeightPx);
 });
 
 test('V3 renderer preserves dimensions and places QR before pattern', () => {
@@ -21,10 +31,12 @@ test('V3 renderer preserves dimensions and places QR before pattern', () => {
   qrContext.fillStyle = '#000'; qrContext.fillRect(0, 0, 20, 20);
   patternContext.fillStyle = '#000'; patternContext.fillRect(0, 0, 30, 20);
   const layout = renderV3QrPatternToCanvas(qr as unknown as HTMLCanvasElement, pattern as unknown as HTMLCanvasElement, target as unknown as HTMLCanvasElement, 18, 1);
+  const footerHeightPx = Math.max(150, Math.round(30 * 0.62));
+  const extraCanvasHeightPx = Math.max(1, Math.round(footerHeightPx * 0.32));
   assert.equal(target.width, layout.contentWidthPx);
   assert.equal(target.height, layout.contentHeightPx);
   assert.equal(target.width, 52);
-  assert.equal(target.height, 124);
+  assert.equal(target.height, 20 + footerHeightPx + extraCanvasHeightPx);
   assert.equal(layout.rightMarginPx, 1);
   const edgePixel = target.getContext('2d').getImageData(target.width - 1, 10, 1, 1).data;
   assert.equal(edgePixel[0], 255);
