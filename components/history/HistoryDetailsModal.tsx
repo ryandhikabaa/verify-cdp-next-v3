@@ -11,6 +11,9 @@ type HistoryDetail = {
   status: string;
   notes: string | null;
   validationPayloadBase64: string | null;
+  qrPayload: string | null;
+  patternDecodePayload: string | null;
+  qrHvalue: string | null;
   latitude: number | null;
   longitude: number | null;
   createdAt: string;

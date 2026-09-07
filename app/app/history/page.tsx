@@ -76,6 +76,9 @@ export default async function VerificationHistoryPage({
     validationPayloadBase64: row.patternDecodePayload
       ? Buffer.from(row.patternDecodePayload, 'latin1').toString('base64')
       : null,
+    qrPayload: row.qrPayload,
+    patternDecodePayload: row.patternDecodePayload,
+    qrHvalue: row.qrHvalue,
     latitude: row.latitude,
     longitude: row.longitude,
     createdAt: row.createdAt.toISOString(),

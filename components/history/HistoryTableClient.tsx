@@ -14,6 +14,9 @@ type HistoryRow = {
   status: string;
   notes: string | null;
   validationPayloadBase64: string | null;
+  qrPayload: string | null;
+  patternDecodePayload: string | null;
+  qrHvalue: string | null;
   latitude: number | null;
   longitude: number | null;
   createdAt: string;
@@ -164,7 +167,20 @@ export function HistoryTableClient({
                 <div className="grid grid-cols-[minmax(150px,1.25fr)_100px_120px_minmax(160px,1fr)_190px_170px_64px] items-center gap-5">
                   <button type="button" onClick={() => setSelectedDetail(row)} className="min-w-0 text-left">
                     <div className="truncate font-mono text-sm font-black text-slate-900">{row.label}</div>
-                    <div className="mt-1 text-xs text-slate-500">ID {row.id.slice(0, 8)}...</div>
+                    <div className="mt-1.5 flex flex-col gap-0.5">
+                      <div className="truncate text-xs text-slate-500" title={row.qrPayload ?? ''}>
+                        <span className="mr-1 font-semibold text-slate-400">QR:</span>
+                        <span className="font-mono">{row.qrPayload ?? '—'}</span>
+                      </div>
+                      <div className="truncate text-xs text-slate-500" title={row.patternDecodePayload ?? ''}>
+                        <span className="mr-1 font-semibold text-slate-400">Payload:</span>
+                        <span className="font-mono">{row.patternDecodePayload ?? '—'}</span>
+                      </div>
+                      <div className="truncate text-xs text-slate-500" title={row.qrHvalue ?? ''}>
+                        <span className="mr-1 font-semibold text-slate-400">Hidden:</span>
+                        <span className="font-mono">{row.qrHvalue ?? '—'}</span>
+                      </div>
+                    </div>
                   </button>
 
                   <div>
