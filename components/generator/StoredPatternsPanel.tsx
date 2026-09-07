@@ -7,12 +7,21 @@ import type {usePatternLibrary} from '@/hooks/usePatternLibrary';
 
 type PatternLibraryState = ReturnType<typeof usePatternLibrary>;
 const PAGE_SIZE_OPTIONS = [10, 20, 30, 50, 100];
-type PayloadStatusFilter = 'all' | 'complete' | 'missing_payload' | 'has_qr' | 'missing_qr';
 
 function getCreatedTimestamp(value?: string) {
   if (!value) return 0;
   const timestamp = new Date(value).getTime();
   return Number.isNaN(timestamp) ? 0 : timestamp;
+}
+
+function getCreatedDayKey(value?: string) {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
 }
 
 function formatCreatedAt(value?: string) {
@@ -35,10 +44,6 @@ function getPayload1(doc: PatternDoc) {
   return doc.payload_1 ?? doc.pattern_payload ?? doc.payload ?? '';
 }
 
-function getPayload2(doc: PatternDoc) {
-  return doc.payload_2 ?? '';
-}
-
 function getQrPayload(doc: PatternDoc) {
   return doc.payload_qr ?? doc.qr_payload ?? '';
 }
@@ -57,7 +62,6 @@ function getSearchCorpus(doc: PatternDoc) {
     doc.id,
     doc.label,
     getPayload1(doc),
-    getPayload2(doc),
     getQrPayload(doc),
     doc.style,
   ]
@@ -66,24 +70,14 @@ function getSearchCorpus(doc: PatternDoc) {
     .toUpperCase();
 }
 
-function matchesPayloadStatus(doc: PatternDoc, status: PayloadStatusFilter) {
-  const hasPayload1 = hasText(getPayload1(doc));
-  const hasPayload2 = hasText(getPayload2(doc));
-  const hasQr = hasText(getQrPayload(doc));
-
-  if (status === 'complete') return hasPayload1 && hasPayload2 && hasQr;
-  if (status === 'missing_payload') return !hasPayload1 || !hasPayload2;
-  if (status === 'has_qr') return hasQr;
-  if (status === 'missing_qr') return !hasQr;
-  return true;
-}
-
 function detailRows(doc: PatternDoc) {
   return [
     ['Serial / ID', doc.id],
-    ['payload_1', doc.payload_1 ?? doc.pattern_payload ?? doc.payload],
-    ['payload_2', doc.payload_2],
-    ['payload_qr', doc.payload_qr ?? doc.qr_payload],
+    ['Payload Pattern', doc.payload_1 ?? doc.pattern_payload ?? doc.payload],
+    ['Payload QR', doc.payload_qr ?? doc.qr_payload],
+    ['Hidden Value', doc.qr_hvalue],
+    ['Secret 1', doc.qr_secret1],
+    ['Secret 2', doc.qr_secret2],
     ['Density', `${(doc.density * 100).toFixed(0)}% (${doc.density})`],
     ['Size', doc.size ? `${doc.size} × ${doc.size}` : undefined],
     ['Style', doc.style],
@@ -117,7 +111,7 @@ export function StoredPatternsPanel({
   const [detailTargetDoc, setDetailTargetDoc] = useState<PatternDoc | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [seedLengthFilter, setSeedLengthFilter] = useState(0);
-  const [payloadStatusFilter, setPayloadStatusFilter] = useState<PayloadStatusFilter>('all');
+  const [dayFilter, setDayFilter] = useState('');
   const [selectedOnly, setSelectedOnly] = useState(false);
   const [dateSort, setDateSort] = useState<'newest' | 'oldest'>('newest');
 
@@ -127,14 +121,14 @@ export function StoredPatternsPanel({
       .filter((doc) => (
         (!query || getSearchCorpus(doc).includes(query))
         && (!seedLengthFilter || doc.id.length === seedLengthFilter)
-        && matchesPayloadStatus(doc, payloadStatusFilter)
+        && (!dayFilter || getCreatedDayKey(doc.created_at) === dayFilter)
         && (!selectedOnly || patternLibrary.selectedDocIds.includes(doc.id))
       ))
       .sort((first, second) => {
         const difference = getCreatedTimestamp(first.created_at) - getCreatedTimestamp(second.created_at);
         return dateSort === 'oldest' ? difference : -difference;
       });
-  }, [dateSort, patternLibrary.docsList, patternLibrary.selectedDocIds, payloadStatusFilter, searchQuery, seedLengthFilter, selectedOnly]);
+  }, [dateSort, dayFilter, patternLibrary.docsList, patternLibrary.selectedDocIds, searchQuery, seedLengthFilter, selectedOnly]);
 
   const allFilteredSelected = filteredDocs.length > 0 && filteredDocs.every((doc) => patternLibrary.selectedDocIds.includes(doc.id));
 
@@ -157,7 +151,7 @@ export function StoredPatternsPanel({
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [dateSort, payloadStatusFilter, searchQuery, seedLengthFilter, selectedOnly]);
+  }, [dateSort, dayFilter, searchQuery, seedLengthFilter, selectedOnly]);
 
   useEffect(() => {
     setCurrentPage((page) => Math.min(page, totalPages));
@@ -169,7 +163,7 @@ export function StoredPatternsPanel({
   }, [currentPage, filteredDocs, pageSize]);
 
   const allCurrentPageSelected = paginatedDocs.length > 0 && paginatedDocs.every((doc) => patternLibrary.selectedDocIds.includes(doc.id));
-  const hasActiveFilters = Boolean(searchQuery.trim()) || seedLengthFilter > 0 || payloadStatusFilter !== 'all' || selectedOnly;
+  const hasActiveFilters = Boolean(searchQuery.trim()) || seedLengthFilter > 0 || dayFilter !== '' || selectedOnly;
 
   const pageStart = filteredDocs.length === 0 ? 0 : (currentPage - 1) * pageSize + 1;
   const pageEnd = Math.min(currentPage * pageSize, filteredDocs.length);
@@ -184,7 +178,7 @@ export function StoredPatternsPanel({
   const clearFilters = () => {
     setSearchQuery('');
     setSeedLengthFilter(0);
-    setPayloadStatusFilter('all');
+    setDayFilter('');
     setSelectedOnly(false);
   };
 
@@ -241,18 +235,32 @@ export function StoredPatternsPanel({
           <span className="mb-1.5 block text-[9px] font-black uppercase tracking-wider text-slate-400">Panjang Seed</span>
           <select value={seedLengthFilter} onChange={(event) => setSeedLengthFilter(Number(event.target.value))} className="min-h-9 w-full rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-semibold text-slate-700 shadow-sm shadow-slate-100 outline-none transition focus:border-cyan-300 focus:ring-4 focus:ring-cyan-100/70 sm:text-sm">
             <option value={0}>Semua panjang</option>
-            {Array.from({length: 12}, (_, index) => index + 1).map((length) => <option key={length} value={length}>{length} karakter</option>)}
+            {Array.from({length: 24}, (_, index) => index + 1).map((length) => <option key={length} value={length}>{length} karakter</option>)}
           </select>
         </label>
         <label className="block">
-          <span className="mb-1.5 block text-[9px] font-black uppercase tracking-wider text-slate-400">Status Payload</span>
-          <select value={payloadStatusFilter} onChange={(event) => setPayloadStatusFilter(event.target.value as PayloadStatusFilter)} className="min-h-9 w-full rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-semibold text-slate-700 shadow-sm shadow-slate-100 outline-none transition focus:border-cyan-300 focus:ring-4 focus:ring-cyan-100/70 sm:text-sm">
-            <option value="all">Semua status</option>
-            <option value="complete">Lengkap + QR</option>
-            <option value="missing_payload">Payload belum lengkap</option>
-            <option value="has_qr">Memiliki QR</option>
-            <option value="missing_qr">QR belum tersedia</option>
-          </select>
+          <span className="mb-1.5 block text-[9px] font-black uppercase tracking-wider text-slate-400">Hari</span>
+          <div className="relative flex min-h-9 items-center gap-2 rounded-lg border border-slate-200 bg-white px-2.5 shadow-sm shadow-slate-100 transition focus-within:border-cyan-300 focus-within:ring-4 focus-within:ring-cyan-100/70">
+            <input
+              type="date"
+              value={dayFilter}
+              onChange={(event) => setDayFilter(event.target.value)}
+              onClick={(event) => {
+                const target = event.currentTarget;
+                try {
+                  target.showPicker?.();
+                } catch {
+                  target.focus();
+                }
+              }}
+              className="min-w-0 flex-1 cursor-pointer bg-transparent text-xs text-slate-800 outline-none placeholder:text-slate-400 [&::-webkit-calendar-picker-indicator]:ml-auto [&::-webkit-calendar-picker-indicator]:cursor-pointer [&::-webkit-calendar-picker-indicator]:opacity-60 hover:[&::-webkit-calendar-picker-indicator]:opacity-100 sm:text-sm"
+            />
+            {dayFilter ? (
+              <button type="button" onClick={() => setDayFilter('')} className="shrink-0 rounded-md p-1 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600" aria-label="Reset filter hari" title="Reset filter hari">
+                <X className="h-3.5 w-3.5" />
+              </button>
+            ) : null}
+          </div>
         </label>
         <label className="block">
           <span className="mb-1.5 block text-[9px] font-black uppercase tracking-wider text-slate-400">Urutan</span>
@@ -356,14 +364,14 @@ export function StoredPatternsPanel({
         </div>
       ) : (
         <div className="mt-4 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm shadow-slate-100">
-          <div className="hidden grid-cols-[30px_minmax(260px,0.95fr)_minmax(260px,1.1fr)_140px_124px] items-center gap-2.5 border-b border-slate-200 bg-slate-50 px-4 py-2 text-[9px] font-black uppercase tracking-[0.18em] text-slate-400 xl:grid">
-            <div className="text-center">Pilih</div>
-            <div>Identitas & Pattern</div>
-            <div>Payload & QR</div>
+          <div className="hidden grid-cols-[72px_minmax(260px,1.3fr)_minmax(220px,1fr)_150px_124px] items-center gap-2.5 border-b border-slate-200 bg-slate-50 px-4 py-2 text-center text-[9px] font-black uppercase tracking-[0.18em] text-slate-400 xl:grid">
+            <div className="text-center">#No</div>
+            <div className="text-center">Payload & QR</div>
+            <div className="text-center">Detail</div>
             <button
               type="button"
               onClick={() => setDateSort((current) => current === 'newest' ? 'oldest' : 'newest')}
-              className="inline-flex w-fit items-center gap-1.5 rounded-md py-1 text-left transition hover:text-cyan-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300"
+              className="mx-auto inline-flex w-fit items-center gap-1.5 rounded-md py-1 text-center transition hover:text-cyan-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300"
               aria-label={`Urutkan Created At ${dateSort === 'newest' ? 'terlama dahulu' : 'terbaru dahulu'}`}
               title={dateSort === 'newest' ? 'Terbaru dahulu' : 'Terlama dahulu'}
             >
@@ -380,7 +388,7 @@ export function StoredPatternsPanel({
                 <Filter className="h-4 w-4" />
               </div>
               <h3 className="mt-3 text-sm font-black tracking-[-0.03em] text-slate-950 sm:text-base">Tidak ada hasil yang cocok</h3>
-              <p className="mx-auto mt-1.5 max-w-md text-xs leading-5 text-slate-500 sm:text-sm">Coba ubah kata kunci, status payload, panjang seed, atau matikan filter hanya dipilih.</p>
+              <p className="mx-auto mt-1.5 max-w-md text-xs leading-5 text-slate-500 sm:text-sm">Coba ubah kata kunci, hari, panjang seed, atau matikan filter hanya dipilih.</p>
               {hasActiveFilters ? (
                 <button type="button" onClick={clearFilters} className="mt-4 min-h-8 rounded-lg border border-cyan-200 bg-white px-3 text-[11px] font-bold text-cyan-800 transition hover:bg-cyan-50 active:scale-[0.98]">
                   Reset filter
@@ -390,10 +398,7 @@ export function StoredPatternsPanel({
           ) : null}
           {paginatedDocs.map((doc, index) => {
             const payload1 = getPayload1(doc);
-            const payload2 = getPayload2(doc);
             const qrPayload = getQrPayload(doc);
-            const displayLabel = doc.label?.trim();
-            const shouldShowLabel = displayLabel && displayLabel.toUpperCase() !== doc.id.toUpperCase();
 
             return (
             <div
@@ -407,64 +412,60 @@ export function StoredPatternsPanel({
                   setDetailTargetDoc(doc);
                 }
               }}
-              className={`grid cursor-pointer grid-cols-[28px_minmax(0,1fr)] gap-x-2.5 gap-y-1.5 px-3 py-2 transition sm:px-3.5 xl:grid-cols-[28px_minmax(260px,0.95fr)_minmax(260px,1.1fr)_140px_124px] xl:items-center xl:gap-2.5 ${patternLibrary.selectedDocIds.includes(doc.id) ? 'bg-cyan-50 ring-1 ring-inset ring-cyan-200' : index % 2 === 0 ? 'bg-white hover:bg-cyan-50/60' : 'bg-slate-100/70 hover:bg-cyan-50/70'}`}
+              className={`grid cursor-pointer grid-cols-[72px_minmax(0,1fr)] gap-x-2.5 gap-y-1.5 px-3 py-2 transition sm:px-3.5 xl:grid-cols-[72px_minmax(260px,1.3fr)_minmax(220px,1fr)_150px_124px] xl:items-center xl:gap-2.5 ${patternLibrary.selectedDocIds.includes(doc.id) ? 'bg-cyan-50 ring-1 ring-inset ring-cyan-200' : index % 2 === 0 ? 'bg-white hover:bg-cyan-50/60' : 'bg-slate-100/70 hover:bg-cyan-50/70'}`}
               aria-label={`Lihat detail ${doc.id}`}
             >
-              <div className="flex items-start justify-center pt-1 lg:items-center lg:pt-0">
+              <div className="flex items-center gap-2 pt-1 xl:justify-center xl:pt-0">
                 <input
                   type="checkbox"
                   checked={patternLibrary.selectedDocIds.includes(doc.id)}
                   onClick={(event) => event.stopPropagation()}
                   onChange={() => patternLibrary.toggleDocSelection(doc.id)}
-                  className="h-4 w-4 shrink-0 accent-cyan-700"
+                  className="h-5 w-5 shrink-0 cursor-pointer accent-cyan-700"
                   aria-label={`Pilih ${doc.id}`}
                 />
+                <span className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-cyan-700 text-[11px] font-black text-white shadow-sm shadow-cyan-100">#{(currentPage - 1) * pageSize + index + 1}</span>
               </div>
 
-              <div className="min-w-0 rounded-lg px-2 py-1.5 text-left transition xl:h-full">
-                <div className="flex min-w-0 items-center gap-2">
-                  <span className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-cyan-700 text-[9px] font-black text-white shadow-sm shadow-cyan-100">#{(currentPage - 1) * pageSize + index + 1}</span>
+              <div className="col-start-2 min-w-0 xl:col-start-auto xl:border-l xl:border-slate-100 xl:pl-3">
+                <div className="grid gap-1.5 xl:grid-cols-1">
                   <div className="min-w-0">
-                    <div className="truncate font-mono text-xs font-black leading-4 text-slate-900">{doc.id}</div>
-                    {shouldShowLabel ? <div className="mt-0.5 truncate text-[10px] font-semibold leading-3 text-slate-500">{displayLabel}</div> : null}
-                  </div>
-                </div>
-                <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[9px] font-bold text-slate-500">
-                  <span>D {(doc.density * 100).toFixed(0)}%</span>
-                  <span className="h-1 w-1 rounded-full bg-slate-300" />
-                  <span className="text-cyan-800">{doc.id.length} char</span>
-                  <span className="h-1 w-1 rounded-full bg-slate-300" />
-                  <span>{doc.size ?? 64}×{doc.size ?? 64}</span>
-                </div>
-                <div className="mt-0.5 truncate text-[9px] font-semibold text-slate-400" title={doc.style ?? 'stochastic_noise'}>
-                  {doc.style ?? 'stochastic_noise'}
-                </div>
-              </div>
-
-              <div className="col-start-2 min-w-0 border-t border-slate-100 pt-1.5 xl:col-start-auto xl:border-l xl:border-t-0 xl:pl-3 xl:pt-0">
-                <div className="grid gap-1 sm:grid-cols-2 xl:grid-cols-1">
-                  <div className="min-w-0">
-                    <div className="text-[8px] font-black uppercase tracking-[0.16em] text-slate-400">payload_1</div>
-                    <div className={`truncate font-mono text-[10px] font-bold leading-4 ${hasText(payload1) ? 'text-slate-800' : 'text-amber-700'}`} title={formatOptional(payload1)}>
+                    <div className="text-[10px] font-black uppercase tracking-[0.16em] text-cyan-700">Payload Pattern</div>
+                    <div className={`truncate font-mono text-sm font-black leading-5 ${hasText(payload1) ? 'text-slate-900' : 'text-amber-700'}`} title={formatOptional(payload1)}>
                       {shortValue(payload1)}
                     </div>
                   </div>
                   <div className="min-w-0">
-                    <div className="text-[8px] font-black uppercase tracking-[0.16em] text-slate-400">payload_2</div>
-                    <div className={`truncate font-mono text-[10px] font-bold leading-4 ${hasText(payload2) ? 'text-slate-800' : 'text-amber-700'}`} title={formatOptional(payload2)}>
-                      {shortValue(payload2)}
+                    <div className="flex items-center gap-1">
+                      <span className={`inline-flex shrink-0 items-center rounded-md border px-1.5 py-0.5 text-[10px] font-black ${hasText(qrPayload) ? 'border-emerald-200 bg-emerald-100 text-emerald-800' : 'border-amber-100 bg-amber-50 text-amber-700'}`}>{hasText(qrPayload) ? 'QR' : 'No QR'}</span>
+                    </div>
+                    <div className={`mt-0.5 truncate font-mono text-sm font-black leading-5 ${hasText(qrPayload) ? 'text-slate-900' : 'text-amber-700'}`} title={formatOptional(qrPayload)}>
+                      {shortValue(qrPayload, 44)}
                     </div>
                   </div>
                 </div>
-                <div className="mt-1 flex items-center gap-1">
-                  <span className={`inline-flex shrink-0 rounded-md border px-1.5 py-0.5 text-[8px] font-black ${hasText(qrPayload) ? 'border-emerald-100 bg-emerald-50 text-emerald-700' : 'border-amber-100 bg-amber-50 text-amber-700'}`}>{hasText(qrPayload) ? 'QR' : 'No QR'}</span>
-                  <span className="min-w-0 truncate font-mono text-[10px] font-semibold text-slate-500" title={formatOptional(qrPayload)}>{shortValue(qrPayload, 44)}</span>
+              </div>
+
+              <div className="col-start-2 min-w-0 xl:col-start-auto xl:border-l xl:border-slate-100 xl:pl-3">
+                <div className="flex flex-col gap-0.5 text-[11px] font-bold text-slate-500">
+                  <span className="flex min-w-0 items-baseline gap-1">
+                    <span className="shrink-0 text-[10px] font-black uppercase tracking-wide text-slate-400">Hidden Value</span>
+                    <span className="truncate font-mono text-[11px] text-slate-700" title={formatOptional(doc.qr_hvalue)}>{shortValue(doc.qr_hvalue, 26)}</span>
+                  </span>
+                  <span className="flex min-w-0 items-baseline gap-1">
+                    <span className="shrink-0 text-[10px] font-black uppercase tracking-wide text-slate-400">Secret 1</span>
+                    <span className="truncate font-mono text-[11px] text-slate-700" title={formatOptional(doc.qr_secret1)}>{shortValue(doc.qr_secret1, 26)}</span>
+                  </span>
+                  <span className="flex min-w-0 items-baseline gap-1">
+                    <span className="shrink-0 text-[10px] font-black uppercase tracking-wide text-slate-400">Secret 2</span>
+                    <span className="truncate font-mono text-[11px] text-slate-700" title={formatOptional(doc.qr_secret2)}>{shortValue(doc.qr_secret2, 26)}</span>
+                  </span>
                 </div>
               </div>
 
               <div className="col-start-2 text-left xl:col-start-auto">
-                <div className="mb-0.5 text-[9px] font-black uppercase tracking-[0.16em] text-slate-400 lg:hidden">Created At</div>
-                <time dateTime={doc.created_at} className="whitespace-nowrap text-[10px] font-semibold tabular-nums text-slate-600 sm:text-[11px]">
+                <div className="mb-0.5 text-[10px] font-black uppercase tracking-[0.16em] text-slate-400 lg:hidden">Created At</div>
+                <time dateTime={doc.created_at} className="whitespace-nowrap text-xs font-semibold tabular-nums text-slate-600 sm:text-[13px]">
                   {formatCreatedAt(doc.created_at)}
                 </time>
               </div>
@@ -756,9 +757,21 @@ export function StoredPatternsPanel({
                   </div>
                   <div className="mt-3 overflow-hidden rounded-[1.25rem] border border-slate-200 bg-white shadow-inner shadow-slate-100">
                     {detailTargetDoc.image_data ? (
-                      <img src={detailTargetDoc.image_data} alt={detailTargetDoc.label || detailTargetDoc.id} className="h-full max-h-[280px] w-full object-contain bg-[radial-gradient(circle_at_top,rgba(224,242,254,0.72),rgba(255,255,255,0.96))] [image-rendering:pixelated]" />
+                      <img src={detailTargetDoc.image_data} alt={detailTargetDoc.label || detailTargetDoc.id} className="h-full max-h-[240px] w-full object-contain bg-[radial-gradient(circle_at_top,rgba(224,242,254,0.72),rgba(255,255,255,0.96))] [image-rendering:pixelated]" />
                     ) : (
-                      <div className="flex min-h-[240px] items-center justify-center px-6 text-center text-sm text-slate-500">Preview gambar belum tersedia untuk data ini.</div>
+                      <div className="flex min-h-[200px] items-center justify-center px-6 text-center text-sm text-slate-500">Preview gambar belum tersedia untuk data ini.</div>
+                    )}
+                  </div>
+
+                  <div className="mt-4 flex items-center justify-between gap-3">
+                    <div className="text-[10px] font-black uppercase tracking-[0.22em] text-emerald-700">QR Code</div>
+                    <div className="text-[11px] font-semibold text-slate-500">QR</div>
+                  </div>
+                  <div className="mt-3 overflow-hidden rounded-[1.25rem] border border-emerald-200 bg-white shadow-inner shadow-emerald-50">
+                    {detailTargetDoc.qr_image ? (
+                      <img src={detailTargetDoc.qr_image} alt={`QR ${detailTargetDoc.label || detailTargetDoc.id}`} className="mx-auto h-full max-h-[200px] w-auto max-w-full object-contain p-4 bg-white" />
+                    ) : (
+                      <div className="flex min-h-[160px] items-center justify-center px-6 text-center text-sm text-slate-500">QR belum tersedia untuk data ini.</div>
                     )}
                   </div>
                 </div>
@@ -766,7 +779,7 @@ export function StoredPatternsPanel({
                 <div className="bg-slate-50/70 p-5 sm:p-6">
                   <div className="grid gap-3 sm:grid-cols-2">
                     {detailRows(detailTargetDoc).map(([label, value]) => (
-                      <section key={label} className={`${label === 'payload_qr' || label === 'Serial / ID' ? 'sm:col-span-2' : ''} rounded-[1.1rem] border border-slate-200 bg-white p-4 shadow-sm shadow-slate-100`}>
+                      <section key={label} className={`${label === 'Payload QR' || label === 'Payload Pattern' || label === 'Serial / ID' ? 'sm:col-span-2' : ''} rounded-[1.1rem] border border-slate-200 bg-white p-4 shadow-sm shadow-slate-100`}>
                         <div className="text-[10px] font-black uppercase tracking-[0.22em] text-cyan-700">{label}</div>
                         <div className="mt-2 break-all font-mono text-sm font-semibold leading-6 text-slate-800">{formatOptional(value)}</div>
                       </section>
