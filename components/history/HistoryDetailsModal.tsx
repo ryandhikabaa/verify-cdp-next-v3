@@ -5,7 +5,6 @@ import {Check, Copy, MapPin, Smartphone, X} from 'lucide-react';
 
 type HistoryDetail = {
   id: string;
-  label: string;
   deviceID: string;
   source: string;
   status: string;
@@ -91,7 +90,7 @@ export function HistoryDetailsModal({
             <div className="flex items-start justify-between gap-4">
               <div className="min-w-0">
                 <div className="text-[10px] font-black uppercase tracking-[0.24em] text-cyan-700">Verification detail</div>
-                <h3 className="mt-1 truncate font-mono text-xl font-black tracking-[-0.04em] text-slate-950 sm:text-2xl">{detail.label}</h3>
+                <h3 className="mt-1 truncate font-mono text-xl font-black tracking-[-0.04em] text-slate-950 sm:text-2xl">{detail.patternDecodePayload ?? detail.id}</h3>
                 <div className="mt-3 flex flex-wrap items-center gap-2">
                   <span className="inline-flex rounded-full border border-cyan-100 bg-cyan-50 px-3 py-1 text-[11px] font-bold text-cyan-800">
                     {detail.source}
@@ -125,7 +124,7 @@ export function HistoryDetailsModal({
                 {detail.imageData ? (
                   <img
                     src={detail.imageData}
-                    alt={detail.label}
+                    alt={detail.patternDecodePayload ?? detail.id}
                     className="h-full max-h-[280px] w-full object-contain bg-[radial-gradient(circle_at_top,rgba(224,242,254,0.72),rgba(255,255,255,0.96))] sm:max-h-[340px]"
                   />
                 ) : (
@@ -209,8 +208,8 @@ export function HistoryDetailsModal({
                       <dd className="max-w-[72%] break-all text-right font-mono text-slate-800">{detail.id}</dd>
                     </div>
                     <div className="flex items-start justify-between gap-4">
-                      <dt className="shrink-0 font-medium text-slate-400">Label</dt>
-                      <dd className="max-w-[72%] break-all text-right font-mono text-slate-800">{detail.label}</dd>
+                      <dt className="shrink-0 font-medium text-slate-400">Payload</dt>
+                      <dd className="max-w-[72%] break-all text-right font-mono text-slate-800">{detail.patternDecodePayload ?? '-'}</dd>
                     </div>
                   </dl>
                 </section>

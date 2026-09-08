@@ -27,7 +27,7 @@ export default async function DashboardPage() {
       where: {latitude: {not: null}, longitude: {not: null}},
       orderBy: {createdAt: 'desc'},
       take: 150,
-      select: {id: true, label: true, status: true, latitude: true, longitude: true, deviceID: true, createdAt: true},
+      select: {id: true, patternDecodePayload: true, status: true, latitude: true, longitude: true, deviceID: true, createdAt: true},
     }),
   ]);
 
@@ -44,7 +44,7 @@ export default async function DashboardPage() {
     if (row.latitude == null || row.longitude == null) return [];
     return [{
       id: row.id,
-      label: row.label,
+      patternDecodePayload: row.patternDecodePayload,
       status: row.status,
       latitude: row.latitude,
       longitude: row.longitude,

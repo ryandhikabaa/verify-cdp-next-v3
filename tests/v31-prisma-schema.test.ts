@@ -30,7 +30,7 @@ test('Prisma schema maps the three V3.1 tables', () => {
   assert.match(schema, /authenticCount\s+Int\s+@default\(0\)\s+@map\("authentic_count"\)/);
   assert.match(schema, /counterfeitCount\s+Int\s+@default\(0\)\s+@map\("counterfeit_count"\)/);
   assert.match(schema, /qrSecret1/);
-  assert.match(schema, /generatedId/);
+  assert.doesNotMatch(schema, /generatedId/);
   assert.doesNotMatch(schema, /pattern_generated_v21/);
   assert.doesNotMatch(schema, /^\s*serial\s+/m);
   assert.doesNotMatch(schema, /@map\("serial"\)/);
@@ -43,11 +43,12 @@ test('initial migration creates constraints, indexes, and update triggers', () =
   assert.match(migration, /pattern_generated_qr_hvalue_length/);
   assert.match(migration, /pattern_generated_pattern_payload_length/);
   assert.match(migration, /idx_pattern_generated_qr_hvalue/);
-  assert.match(migration, /idx_pattern_detection_generated_id/);
+  assert.match(migration, /idx_pattern_detection_pattern_payload/);
+  assert.doesNotMatch(migration, /idx_pattern_detection_generated_id/);
   assert.match(migration, /CREATE TRIGGER set_user_update_at/);
   assert.match(migration, /CREATE TRIGGER set_pattern_generated_update_at/);
   assert.match(migration, /CREATE TRIGGER set_pattern_detection_updated_at/);
-  assert.match(migration, /REFERENCES "pattern_generated"\("id"\) ON DELETE SET NULL/);
+  assert.doesNotMatch(migration, /REFERENCES "pattern_generated"\("id"\) ON DELETE SET NULL/);
   assert.doesNotMatch(migration, /pattern_generated_v21/);
   assert.doesNotMatch(migration, /left_position/);
 });

@@ -9,7 +9,7 @@ import {prisma} from '@/lib/db/prisma';
 const numberFormatter = new Intl.NumberFormat('id-ID');
 const PAGE_SIZE = 10;
 const HISTORY_SORT_COLUMNS = {
-  label: 'label',
+  payload: 'patternDecodePayload',
   source: 'deviceID',
   status: 'status',
   device: 'deviceID',
@@ -68,7 +68,6 @@ export default async function VerificationHistoryPage({
   const sourceOptions = ['ALL', 'WEB', 'MOBILE'];
   const historyRows = historyRowsRaw.map((row) => ({
     id: row.id,
-    label: row.label,
     deviceID: row.deviceID,
     source: detectVerificationSource(row.deviceID),
     status: row.status,

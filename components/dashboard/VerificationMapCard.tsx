@@ -8,7 +8,7 @@ import L, {type DivIcon} from 'leaflet';
 
 type VerificationMapPoint = {
   id: string;
-  label: string;
+  patternDecodePayload: string | null;
   status: 'AUTHENTIC' | 'COUNTERFEIT' | 'MISMATCH' | string;
   latitude: number;
   longitude: number;
@@ -145,7 +145,7 @@ export function VerificationMapCard({points}: {points: VerificationMapPoint[]}) 
                   <Marker key={point.id} position={[point.latitude, point.longitude]} icon={createMarkerIcon(point.status)}>
                     <Popup>
                       <div className="min-w-[180px] text-sm text-slate-700">
-                        <div className="font-black text-slate-950">{point.label}</div>
+                        <div className="font-black text-slate-950">{point.patternDecodePayload ?? point.id}</div>
                         <div className="mt-1 text-xs font-semibold text-slate-500">{point.status}</div>
                         <div className="mt-2 text-xs text-slate-500">Source: {point.source || '-'}</div>
                         <div className="text-xs text-slate-500">{formatDateTime(point.createdAt)}</div>

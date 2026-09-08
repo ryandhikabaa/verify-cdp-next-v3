@@ -113,21 +113,13 @@ export interface SimilarityResult {
 
 export interface VerificationRecord {
   id: string;
-  label: string;
   deviceID: string;
   status: VerifyStatus;
   notes: string | null;
   image_data?: string | null;
   latitude?: number | null;
   longitude?: number | null;
-  qr_value?: string | null;
-  qr_format?: string | null;
-  qr_detected?: boolean;
-  qr_bounds?: Record<string, unknown> | null;
   pattern_decode_payload?: string | null;
-  payload_mode?: 'legacy' | 'encrypted' | 'three-part' | 'unknown' | null;
-  decrypt_succeeded?: boolean | null;
-  checksum_valid?: boolean | null;
   created_at?: string;
   updated_at?: string;
 }

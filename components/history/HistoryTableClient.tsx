@@ -7,7 +7,6 @@ import {HistoryDetailsModal} from '@/components/history/HistoryDetailsModal';
 
 type HistoryRow = {
   id: string;
-  label: string;
   deviceID: string;
   source: string;
   clientInfo?: string | null;
@@ -42,7 +41,7 @@ function formatLocation(latitude: number | null, longitude: number | null) {
   return `${latitude.toFixed(5)}, ${longitude.toFixed(5)}`;
 }
 
-type HistorySort = 'label' | 'source' | 'status' | 'device' | 'location' | 'time';
+type HistorySort = 'payload' | 'source' | 'status' | 'device' | 'location' | 'time';
 type SortDirection = 'asc' | 'desc';
 
 function buildHistoryHref(search: string, status: string, source: string, page: number, sort: HistorySort, direction: SortDirection) {
@@ -152,7 +151,7 @@ export function HistoryTableClient({
           <div className="overflow-x-auto">
             <div className="min-w-[1060px]">
               <div className="grid grid-cols-[minmax(150px,1.25fr)_100px_120px_minmax(160px,1fr)_190px_170px_64px] items-center gap-5 border-b border-slate-200 bg-slate-50 px-5 py-3.5 text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">
-            <div>{sortableHeader('label', 'Label')}</div>
+            <div>{sortableHeader('payload', 'Payload')}</div>
             <div>{sortableHeader('source', 'Source')}</div>
             <div>{sortableHeader('status', 'Status')}</div>
             <div>{sortableHeader('device', 'Device')}</div>
@@ -166,7 +165,7 @@ export function HistoryTableClient({
               <div key={row.id} className="px-5 py-4 transition hover:bg-slate-50/70">
                 <div className="grid grid-cols-[minmax(150px,1.25fr)_100px_120px_minmax(160px,1fr)_190px_170px_64px] items-center gap-5">
                   <button type="button" onClick={() => setSelectedDetail(row)} className="min-w-0 text-left">
-                    <div className="truncate font-mono text-sm font-black text-slate-900">{row.label}</div>
+                    <div className="truncate font-mono text-sm font-black text-slate-900">{row.patternDecodePayload ?? row.id}</div>
                     <div className="mt-1.5 flex flex-col gap-0.5">
                       <div className="truncate text-xs text-slate-500" title={row.qrPayload ?? ''}>
                         <span className="mr-1 font-semibold text-slate-400">QR:</span>
@@ -241,7 +240,7 @@ export function HistoryTableClient({
                       onClick={() => setSelectedDetail(row)}
                       className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-700 transition hover:border-slate-300 hover:bg-slate-50"
                       title="Detail"
-                      aria-label={`Detail ${row.label}`}
+                      aria-label={`Detail ${row.patternDecodePayload ?? row.id}`}
                     >
                       <Eye className="h-3.5 w-3.5" />
                     </button>

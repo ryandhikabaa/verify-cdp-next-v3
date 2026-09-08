@@ -1,4 +1,3 @@
-import type {Prisma} from '@prisma/client';
 import {NextRequest} from 'next/server';
 import {apiError, apiSuccess} from '@/lib/api-response';
 import {decryptPayloadToSeed} from '@/lib/cdp';
@@ -32,11 +31,6 @@ function isValidCoordinate(value: number | null, min: number, max: number) {
   return value == null || (Number.isFinite(value) && value >= min && value <= max);
 }
 
-function sanitizeJsonObject(value: unknown) {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
-  return value as Record<string, unknown>;
-}
-
 /** Accepts public verification submissions from mobile clients and stores the resulting verification log. */
 export async function POST(request: NextRequest) {
   let body: Record<string, unknown>;
@@ -53,15 +47,14 @@ export async function POST(request: NextRequest) {
   const latitude = typeof body.latitude === 'number' && Number.isFinite(body.latitude) ? body.latitude : null;
   const longitude = typeof body.longitude === 'number' && Number.isFinite(body.longitude) ? body.longitude : null;
   const checksumValid = body.checksum_valid !== false;
-  const submittedPayloadMode = body.payload_mode === 'encrypted' || body.payload_mode === 'legacy' || body.payload_mode === 'three-part' ? body.payload_mode : 'unknown';
   const layoutVersion = sanitizeText(body.layout_version, 50);
   const leftPatternDecodePayload = sanitizeText(body.left_pattern_decode_payload, 12).toUpperCase();
   const rightPatternDecodePayload = sanitizeText(body.right_pattern_decode_payload, 12).toUpperCase();
   const rawPayloadText = sanitizeText(body.raw_payload_text, LABEL_MAX_LENGTH);
-  const qrValue = sanitizeText(body.qr_value, LABEL_MAX_LENGTH);
-  const qrFormat = sanitizeText(body.qr_format, 50);
-  const qrDetected = body.qr_detected === true;
-  const qrBounds = sanitizeJsonObject(body.qr_bounds);
+  const submittedQrPayload = sanitizeText(body.qr_payload, LABEL_MAX_LENGTH);
+  const submittedQrHvalue = sanitizeText(body.qr_hvalue, 7);
+  const submittedQrSecret1 = sanitizeText(body.qr_secret1, LABEL_MAX_LENGTH);
+  const submittedQrSecret2 = sanitizeText(body.qr_secret2, LABEL_MAX_LENGTH);
   const patternDecodePayload = sanitizeText(body.pattern_decode_payload, LABEL_MAX_LENGTH);
   const createdAt = normalizeTimestamp(body.created_at);
   const updatedAt = normalizeTimestamp(body.updated_at);
@@ -115,8 +108,6 @@ export async function POST(request: NextRequest) {
     payloadMode = 'encrypted';
   }
 
-  const label = incomingId;
-
   if (typeof body.image_data !== 'undefined' && imageData === null) {
     return apiError({status: 400, message: 'Field image_data harus berupa string base64.'});
   }
@@ -132,7 +123,6 @@ export async function POST(request: NextRequest) {
   console.info('[api/verify] Incoming request', {
     incomingId,
     submittedId,
-    label,
     deviceID,
     hasImageData: Boolean(imageData),
     imageDataLength: imageData?.length ?? 0,
@@ -141,15 +131,14 @@ export async function POST(request: NextRequest) {
     decryptSucceeded,
     checksumValid,
     payloadMode,
-    submittedPayloadMode,
     layoutVersion,
     leftPatternDecodePayload: leftPatternDecodePayload || null,
     rightPatternDecodePayload: rightPatternDecodePayload || null,
     rawPayloadText,
-    qrValue,
-    qrFormat,
-    qrDetected,
-    qrBounds,
+    submittedQrPayload,
+    submittedQrHvalue,
+    submittedQrSecret1,
+    submittedQrSecret2,
     patternDecodePayload,
     createdAt,
     updatedAt,
@@ -192,7 +181,6 @@ export async function POST(request: NextRequest) {
       decryptSucceeded,
       checksumValid,
       payloadMode,
-      submittedPayloadMode,
       layoutVersion,
       rawPayloadText,
       notes,
@@ -201,28 +189,18 @@ export async function POST(request: NextRequest) {
     const verification = await prisma.$transaction(async (tx) => {
       const created = await tx.patternDetection.create({
         data: {
-          generatedId: pattern?.id ?? null,
-          label: label || incomingId,
           deviceID,
           status: finalStatus,
           notes,
           imageData,
           latitude,
           longitude,
-          layoutVersion: layoutVersion || pattern?.layoutVersion || (isV3QrPattern ? V3_QR_PATTERN_LAYOUT : null),
-          qrPayload: pattern?.qrPayload ?? null,
-          qrHvalue: pattern?.qrHvalue ?? null,
-          qrSecret1: pattern?.qrSecret1 ?? null,
-          qrSecret2: pattern?.qrSecret2 ?? null,
-          qrValue: qrValue || null,
-          qrFormat: qrFormat || null,
-          qrDetected,
-          qrBounds: qrBounds ? (qrBounds as Prisma.InputJsonValue) : undefined,
+          qrPayload: submittedQrPayload || (pattern?.qrPayload ?? null),
+          qrHvalue: submittedQrHvalue || (pattern?.qrHvalue ?? null),
+          qrSecret1: submittedQrSecret1 || (pattern?.qrSecret1 ?? null),
+          qrSecret2: submittedQrSecret2 || (pattern?.qrSecret2 ?? null),
           patternPayload: incomingId.length <= 24 ? incomingId : null,
           patternDecodePayload: patternDecodePayload || rawPayloadText || null,
-          payloadMode,
-          decryptSucceeded,
-          checksumValid,
           createdAt: createdAt ? new Date(createdAt) : undefined,
           updatedAt: updatedAt ? new Date(updatedAt) : undefined,
         },
@@ -244,7 +222,6 @@ export async function POST(request: NextRequest) {
 
     console.info('[api/verify] Verification saved', {
       verificationId: verification.id,
-      label: verification.label,
       deviceID: verification.deviceID,
       status: verification.status,
       notes: verification.notes,
@@ -268,7 +245,6 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error('[api/verify] Error recording verification', {
       incomingId,
-      label,
       deviceID,
       hasImageData: Boolean(imageData),
       imageDataLength: imageData?.length ?? 0,

@@ -49,7 +49,6 @@ model PatternGenerated {
   counterfeitCount  Int                 @default(0) @map("counterfeit_count")
   createAt          DateTime            @default(now()) @map("create_at") @db.Timestamptz(6)
   updateAt          DateTime            @default(now()) @updatedAt @map("update_at") @db.Timestamptz(6)
-  detections        PatternDetection[]
 
   @@index([layoutVersion], map: "idx_pattern_generated_layout_version")
   @@index([qrHvalue], map: "idx_pattern_generated_qr_hvalue")
@@ -59,38 +58,23 @@ model PatternGenerated {
 
 /// Scan audit log. QR secrets are stored for mobile online verify.
 model PatternDetection {
-  id                   String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  generatedId          String?            @map("generated_id") @db.Uuid
-  generated            PatternGenerated?  @relation(fields: [generatedId], references: [id], onDelete: SetNull)
-  label                String             @db.VarChar(255)
-  deviceID             String             @map("deviceID") @db.VarChar(255)
-  status               String             @db.VarChar(50)
+  id                   String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  deviceID             String   @map("deviceID") @db.VarChar(255)
+  status               String   @db.VarChar(50)
   notes                String?
-  imageData            String?            @map("image_data")
+  imageData            String?  @map("image_data")
   latitude             Float?
   longitude            Float?
-  layoutVersion        String?            @map("layout_version") @db.VarChar(50)
-  qrPayload            String?            @map("qr_payload")
-  qrHvalue             String?            @map("qr_hvalue") @db.VarChar(7)
-  qrSecret1            String?            @map("qr_secret1")
-  qrSecret2            String?            @map("qr_secret2")
-  qrValue              String?            @map("qr_value")
-  qrFormat             String?            @map("qr_format") @db.VarChar(50)
-  qrDetected           Boolean            @default(false) @map("qr_detected")
-  qrBounds             Json?              @map("qr_bounds")
-  patternPayload       String?            @map("pattern_payload") @db.VarChar(24)
-  patternDecodePayload String?            @map("pattern_decode_payload")
-  payloadMode          String?            @map("payload_mode") @db.VarChar(20)
-  decryptSucceeded     Boolean?           @map("decrypt_succeeded")
-  checksumValid        Boolean?           @map("checksum_valid")
-  createdAt            DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt            DateTime           @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  qrPayload            String?  @map("qr_payload")
+  qrHvalue             String?  @map("qr_hvalue") @db.VarChar(7)
+  qrSecret1            String?  @map("qr_secret1")
+  qrSecret2            String?  @map("qr_secret2")
+  patternPayload       String?  @map("pattern_payload") @db.VarChar(24)
+  patternDecodePayload String?  @map("pattern_decode_payload")
+  createdAt            DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt            DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   @@index([deviceID], map: "idx_pattern_detection_device_id")
-  @@index([qrDetected], map: "idx_pattern_detection_qr_detected")
-  @@index([payloadMode], map: "idx_pattern_detection_payload_mode")
   @@index([patternPayload], map: "idx_pattern_detection_pattern_payload")
-  @@index([generatedId], map: "idx_pattern_detection_generated_id")
-  @@index([layoutVersion], map: "idx_pattern_detection_layout_version")
   @@map("pattern_detection")
 }

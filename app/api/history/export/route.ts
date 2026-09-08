@@ -19,19 +19,19 @@ export async function GET(request: NextRequest) {
       orderBy: {createdAt: 'desc'},
       select: {
         id: true,
-        label: true,
         deviceID: true,
         status: true,
         latitude: true,
         longitude: true,
+        patternDecodePayload: true,
         createdAt: true,
       },
     });
 
-    const header = ['id', 'label', 'device_id', 'source', 'status', 'latitude', 'longitude', 'created_at'];
+    const header = ['id', 'pattern_decode_payload', 'device_id', 'source', 'status', 'latitude', 'longitude', 'created_at'];
     const rows = result.map((row) => [
       escapeCsv(row.id),
-      escapeCsv(row.label),
+      escapeCsv(row.patternDecodePayload),
       escapeCsv(row.deviceID),
       escapeCsv(detectVerificationSource(row.deviceID)),
       escapeCsv(row.status),

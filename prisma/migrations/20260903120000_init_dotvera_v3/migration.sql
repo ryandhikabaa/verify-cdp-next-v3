@@ -52,28 +52,18 @@ CREATE INDEX "idx_pattern_generated_qr_payload" ON "pattern_generated"("qr_paylo
 
 CREATE TABLE "pattern_detection" (
     "id" UUID NOT NULL DEFAULT gen_random_uuid(),
-    "generated_id" UUID,
-    "label" VARCHAR(255) NOT NULL,
     "deviceID" VARCHAR(255) NOT NULL,
     "status" VARCHAR(50) NOT NULL,
     "notes" TEXT,
     "image_data" TEXT,
     "latitude" DOUBLE PRECISION,
     "longitude" DOUBLE PRECISION,
-    "layout_version" VARCHAR(50),
     "qr_payload" TEXT,
     "qr_hvalue" VARCHAR(7),
     "qr_secret1" TEXT,
     "qr_secret2" TEXT,
-    "qr_value" TEXT,
-    "qr_format" VARCHAR(50),
-    "qr_detected" BOOLEAN NOT NULL DEFAULT FALSE,
-    "qr_bounds" JSONB,
     "pattern_payload" VARCHAR(24),
     "pattern_decode_payload" TEXT,
-    "payload_mode" VARCHAR(20),
-    "decrypt_succeeded" BOOLEAN,
-    "checksum_valid" BOOLEAN,
     "created_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updated_at" TIMESTAMPTZ(6) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
@@ -81,15 +71,7 @@ CREATE TABLE "pattern_detection" (
 );
 
 CREATE INDEX "idx_pattern_detection_device_id" ON "pattern_detection"("deviceID");
-CREATE INDEX "idx_pattern_detection_qr_detected" ON "pattern_detection"("qr_detected");
-CREATE INDEX "idx_pattern_detection_payload_mode" ON "pattern_detection"("payload_mode");
 CREATE INDEX "idx_pattern_detection_pattern_payload" ON "pattern_detection"("pattern_payload");
-CREATE INDEX "idx_pattern_detection_generated_id" ON "pattern_detection"("generated_id");
-CREATE INDEX "idx_pattern_detection_layout_version" ON "pattern_detection"("layout_version");
-
-ALTER TABLE "pattern_detection"
-ADD CONSTRAINT "pattern_detection_generated_id_fkey"
-FOREIGN KEY ("generated_id") REFERENCES "pattern_generated"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 CREATE OR REPLACE FUNCTION set_user_update_at()
 RETURNS TRIGGER AS $$

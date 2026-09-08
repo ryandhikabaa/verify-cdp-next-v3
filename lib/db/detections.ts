@@ -14,7 +14,8 @@ export function buildDetectionListWhere(input: {
   if (search) {
     and.push({
       OR: [
-        {label: {contains: search, mode: 'insensitive'}},
+        {patternDecodePayload: {contains: search, mode: 'insensitive'}},
+        {patternPayload: {contains: search, mode: 'insensitive'}},
         {deviceID: {contains: search, mode: 'insensitive'}},
       ],
     });
@@ -45,7 +46,6 @@ export function toIso(value: Date | string | null | undefined) {
 export function mapHistoryRow(row: PatternDetection) {
   return {
     id: row.id,
-    label: row.label,
     deviceID: row.deviceID,
     source: mapDetectionSource(row.deviceID),
     status: row.status,
@@ -62,7 +62,6 @@ export function mapHistoryRow(row: PatternDetection) {
 export function mapDetectionToPublicHistoryItem(row: PatternDetection) {
   return {
     id: row.id,
-    label: row.label,
     deviceID: row.deviceID,
     source: mapDetectionSource(row.deviceID),
     status_result: row.status,
@@ -70,14 +69,7 @@ export function mapDetectionToPublicHistoryItem(row: PatternDetection) {
     image_data: row.imageData,
     latitude: row.latitude,
     longitude: row.longitude,
-    qr_value: row.qrValue,
-    qr_format: row.qrFormat,
-    qr_detected: row.qrDetected,
-    qr_bounds: row.qrBounds,
     pattern_decode_payload: row.patternDecodePayload,
-    payload_mode: row.payloadMode,
-    decrypt_succeeded: row.decryptSucceeded,
-    checksum_valid: row.checksumValid,
     created_at: toIso(row.createdAt) ?? new Date(0).toISOString(),
     updated_at: toIso(row.updatedAt) ?? new Date(0).toISOString(),
   };
