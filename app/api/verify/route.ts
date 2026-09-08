@@ -10,6 +10,20 @@ const LABEL_MAX_LENGTH = 255;
 const THREE_PART_V21_LAYOUT = 'three-part-v2.1';
 const V3_QR_PATTERN_LAYOUT = 'v3-qr-pattern';
 const CDP_PAYLOAD_CHUNK_PATTERN = /^[A-Z0-9]{12}$/;
+const MAX_SCAN_SETTING_KEY = 'max_scan';
+const DEFAULT_MAX_SCAN = 10;
+
+/** Reads the max_scan setting; falls back to DEFAULT_MAX_SCAN when unset or invalid. */
+async function resolveMaxScanLimit() {
+  const row = await prisma.setting.findUnique({
+    where: {parameter: MAX_SCAN_SETTING_KEY},
+  });
+
+  if (!row) return DEFAULT_MAX_SCAN;
+
+  const parsed = Number.parseInt(row.value, 10);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : DEFAULT_MAX_SCAN;
+}
 function normalizeTimestamp(value: unknown) {
   if (typeof value !== 'string' || !value.trim()) return null;
 
@@ -29,6 +43,94 @@ function isValidImageData(value: string) {
 
 function isValidCoordinate(value: number | null, min: number, max: number) {
   return value == null || (Number.isFinite(value) && value >= min && value <= max);
+}
+
+/** Records a scan whose QR was read but the pattern could not be decoded within the window. */
+async function recordTimeoutVerification(input: {
+  deviceID: string;
+  imageData: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  submittedQrPayload: string;
+  submittedQrHvalue: string;
+  submittedQrSecret1: string;
+  submittedQrSecret2: string;
+  createdAt: string | null;
+  updatedAt: string | null;
+}) {
+  const {
+    deviceID,
+    imageData,
+    latitude,
+    longitude,
+    submittedQrPayload,
+    submittedQrHvalue,
+    submittedQrSecret1,
+    submittedQrSecret2,
+    createdAt,
+    updatedAt,
+  } = input;
+
+  console.info('[api/verify] Timeout / pattern-unreadable scan', {
+    deviceID,
+    hasImageData: Boolean(imageData),
+    imageDataLength: imageData?.length ?? 0,
+    latitude,
+    longitude,
+    submittedQrPayload,
+    submittedQrHvalue,
+    submittedQrSecret1,
+    submittedQrSecret2,
+    createdAt,
+    updatedAt,
+  });
+
+  const notes = 'Pola tidak terbaca atau gagal dideteksi; produk tidak dapat dipastikan keasliannya.';
+
+  try {
+    const verification = await prisma.patternDetection.create({
+      data: {
+        deviceID,
+        status: 'COUNTERFEIT',
+        notes,
+        imageData,
+        latitude,
+        longitude,
+        qrPayload: submittedQrPayload || null,
+        qrHvalue: submittedQrHvalue || null,
+        qrSecret1: submittedQrSecret1 || null,
+        qrSecret2: submittedQrSecret2 || null,
+        patternPayload: null,
+        patternDecodePayload: null,
+        createdAt: createdAt ? new Date(createdAt) : undefined,
+        updatedAt: updatedAt ? new Date(updatedAt) : undefined,
+      },
+    });
+
+    console.info('[api/verify] Timeout verification saved', {
+      verificationId: verification.id,
+      deviceID: verification.deviceID,
+      status: verification.status,
+      notes: verification.notes,
+    });
+
+    return apiSuccess(
+      {
+        status_result: verification.status,
+        notes: verification.notes,
+      },
+      {
+        status: 201,
+        message: 'Hasil verifikasi belum dapat dikonfirmasi sebagai terdaftar.',
+      },
+    );
+  } catch (error) {
+    console.error('[api/verify] Error recording timeout verification', {
+      deviceID,
+      error,
+    });
+    return apiError({status: 500, message: 'Internal Server Error'});
+  }
 }
 
 /** Accepts public verification submissions from mobile clients and stores the resulting verification log. */
@@ -56,6 +158,7 @@ export async function POST(request: NextRequest) {
   const submittedQrSecret1 = sanitizeText(body.qr_secret1, LABEL_MAX_LENGTH);
   const submittedQrSecret2 = sanitizeText(body.qr_secret2, LABEL_MAX_LENGTH);
   const patternDecodePayload = sanitizeText(body.pattern_decode_payload, LABEL_MAX_LENGTH);
+  const scanOutcome = sanitizeText(body.scan_outcome, 50).toLowerCase();
   const createdAt = normalizeTimestamp(body.created_at);
   const updatedAt = normalizeTimestamp(body.updated_at);
 
@@ -66,7 +169,31 @@ export async function POST(request: NextRequest) {
     });
   }
 
-  if (!patternDecodePayload || !checksumValid) {
+  // Timeout / pattern-unreadable scan: QR was detected but the right-hand pattern
+  // could not be decoded within the window. Recorded as COUNTERFEIT with a distinct
+  // note; no pattern_generated row is resolved, so no per-product counters increment.
+  const isPatternTimeout = scanOutcome === 'timeout' || scanOutcome === 'pattern_failed';
+
+  if (!patternDecodePayload && !isPatternTimeout) {
+    return apiError({status: 400, message: 'Payload hasil decode pattern wajib tersedia.'});
+  }
+
+  if (isPatternTimeout) {
+    return await recordTimeoutVerification({
+      deviceID,
+      imageData,
+      latitude,
+      longitude,
+      submittedQrPayload,
+      submittedQrHvalue,
+      submittedQrSecret1,
+      submittedQrSecret2,
+      createdAt,
+      updatedAt,
+    });
+  }
+
+  if (!checksumValid) {
     return apiError({status: 400, message: 'Payload hasil decode pattern dan checksum valid wajib tersedia.'});
   }
 
@@ -145,38 +272,51 @@ export async function POST(request: NextRequest) {
   });
 
   try {
-    const pattern = await prisma.patternGenerated.findUnique({
-      where: {patternPayload: incomingId},
-    });
+    const [pattern, maxScanLimit] = await Promise.all([
+      prisma.patternGenerated.findUnique({
+        where: {patternPayload: incomingId},
+      }),
+      resolveMaxScanLimit(),
+    ]);
+    // A matched payload that has already been scanned max_scan (or more) times is
+    // treated as COUNTERFEIT: the scan exceeds the permitted limit.
+    const exceedsMaxScan = Boolean(pattern) && pattern!.scannedCount >= maxScanLimit;
     // V3 and v2.1 resolve status directly from the pattern_payload lookup; the shared
     // helper's payloadMode type only covers the legacy/encrypted tracking path.
     const isStructuredLayout = isThreePartV21 || isV3QrPattern;
-    const finalStatus = isStructuredLayout
-      ? (pattern ? 'AUTHENTIC' : 'COUNTERFEIT')
-      : resolveSharedVerifyStatus({
-          patternFound: Boolean(pattern),
-          payloadMode: payloadMode === 'three-part' ? 'unknown' : payloadMode,
-          decryptSucceeded,
-          checksumValid,
-          rawPayloadText,
-        });
-    const notes = isStructuredLayout
-      ? pattern
-        ? 'Produk berhasil diverifikasi dan dinyatakan autentik.'
-        : 'Keaslian produk tidak dapat dikonfirmasi.'
-      : buildSharedTrackingNotes({
-          patternFound: Boolean(pattern),
-          decryptSucceeded,
-          checksumValid,
-          payloadMode: payloadMode === 'three-part' ? 'unknown' : payloadMode,
-          rawPayloadText,
-        });
+    const finalStatus = exceedsMaxScan
+      ? 'COUNTERFEIT'
+      : isStructuredLayout
+        ? (pattern ? 'AUTHENTIC' : 'COUNTERFEIT')
+        : resolveSharedVerifyStatus({
+            patternFound: Boolean(pattern),
+            payloadMode: payloadMode === 'three-part' ? 'unknown' : payloadMode,
+            decryptSucceeded,
+            checksumValid,
+            rawPayloadText,
+          });
+    const notes = exceedsMaxScan
+      ? 'Produk telah melewati batas maksimum scan yang diizinkan.'
+      : isStructuredLayout
+        ? pattern
+          ? 'Produk berhasil diverifikasi dan dinyatakan autentik.'
+          : 'Keaslian produk tidak dapat dikonfirmasi.'
+        : buildSharedTrackingNotes({
+            patternFound: Boolean(pattern),
+            decryptSucceeded,
+            checksumValid,
+            payloadMode: payloadMode === 'three-part' ? 'unknown' : payloadMode,
+            rawPayloadText,
+          });
 
     console.info('[api/verify] Pattern lookup result', {
       incomingId,
       patternFound: Boolean(pattern),
       matchedPatternId: pattern?.id ?? null,
       matchedPatternPayload: pattern?.patternPayload ?? null,
+      exceedsMaxScan,
+      maxScanLimit,
+      currentScannedCount: pattern?.scannedCount ?? null,
       finalStatus,
       decryptSucceeded,
       checksumValid,

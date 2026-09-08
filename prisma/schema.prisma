@@ -78,3 +78,15 @@ model PatternDetection {
   @@index([patternPayload], map: "idx_pattern_detection_pattern_payload")
   @@map("pattern_detection")
 }
+
+/// Key/value application settings (e.g. max_scan). Extensible without schema changes.
+model Setting {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  parameter String   @unique @db.VarChar(100)
+  value     String   @db.VarChar(255)
+  createAt  DateTime @default(now()) @map("create_at") @db.Timestamptz(6)
+  updateAt  DateTime @default(now()) @updatedAt @map("update_at") @db.Timestamptz(6)
+
+  @@index([parameter], map: "idx_setting_parameter")
+  @@map("setting")
+}

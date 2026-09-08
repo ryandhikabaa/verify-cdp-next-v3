@@ -176,7 +176,7 @@ export const endpointDocs: EndpointDocDefinition[] = [
     path: '/api/verify',
     access: 'Public',
     summary: 'Verifikasi decode dari scanner mobile (V3 QR + pattern).',
-    description: 'Dipakai oleh aplikasi mobile setelah scanner berhasil decode QR dan pattern. Server memvalidasi payload V3 (1-24 karakter A-Z, a-z, 0-9, `-`, `_`), mencocokkan `pattern_payload` ke tabel `pattern_generated`, lalu menyimpan log verifikasi ke `pattern_detection`. Untuk flow mobile, respons yang disarankan cukup ringan: `status_result` dan `notes`. Saat payload cocok, counter `scanned_count` dan `authentic_count`/`counterfeit_count` pada baris `pattern_generated` terkait otomatis bertambah satu.',
+    description: 'Dipakai oleh aplikasi mobile setelah scanner berhasil decode QR dan pattern. Server memvalidasi payload V3 (1-24 karakter A-Z, a-z, 0-9, `-`, `_`), mencocokkan `pattern_payload` ke tabel `pattern_generated`, lalu menyimpan log verifikasi ke `pattern_detection`. Untuk flow mobile, respons yang disarankan cukup ringan: `status_result` dan `notes`. Saat payload cocok, counter `scanned_count` dan `authentic_count`/`counterfeit_count` pada baris `pattern_generated` terkait otomatis bertambah satu. Jika QR terbaca namun pattern gagal terdecode (timeout), kirim `scan_outcome: "timeout"` tanpa `pattern_decode_payload`; server mencatatnya sebagai COUNTERFEIT dengan catatan khusus tanpa mengubah counter per-produk.',
     requestExample: JSON.stringify({
       deviceID: 'ANDROID-001',
       layout_version: 'v3-qr-pattern',
@@ -245,8 +245,9 @@ export const endpointDocs: EndpointDocDefinition[] = [
     responseContract: JSON.stringify({
       request: {
         deviceID: 'string (required)',
-        pattern_decode_payload: 'string (required)',
+        pattern_decode_payload: 'string (required, unless scan_outcome is "timeout")',
         checksum_valid: 'boolean (optional, default true)',
+        scan_outcome: 'string (optional, "timeout" for pattern-unreadable scans)',
         layout_version: 'string (optional, "v3-qr-pattern")',
         qr_payload: 'string (optional, API qrcode)',
         qr_hvalue: 'string 7 char (optional, hidden value)',
@@ -282,7 +283,10 @@ export const endpointDocs: EndpointDocDefinition[] = [
       tracking_side_effect: {
         table: 'pattern_generated',
         on_authentic: 'scanned_count +1, authentic_count +1',
-        on_counterfeit: 'scanned_count +1, counterfeit_count +1',
+        on_counterfeit: 'scanned_count +1, counterfeit_count +1 (matched payload only)',
+        on_timeout: 'COUNTERFEIT recorded, no per-product counter increment',
+        on_max_scan_exceeded: 'matched payload scanned >= max_scan -> COUNTERFEIT, scanned_count +1, counterfeit_count +1',
+        max_scan_setting: 'setting table, parameter "max_scan" (default 10)',
         match_key: 'pattern_payload',
       },
     }, null, 2),

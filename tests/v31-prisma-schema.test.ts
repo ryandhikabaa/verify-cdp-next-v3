@@ -17,11 +17,20 @@ const resultCountMigration = readFileSync(
   path.join(root, 'prisma', 'migrations', '20260904130000_add_pattern_generated_result_counts', 'migration.sql'),
   'utf8',
 );
+const settingMigration = readFileSync(
+  path.join(root, 'prisma', 'migrations', '20260908130000_add_setting_table', 'migration.sql'),
+  'utf8',
+);
+const maxScanSeedMigration = readFileSync(
+  path.join(root, 'prisma', 'migrations', '20260908140000_seed_max_scan_setting', 'migration.sql'),
+  'utf8',
+);
 
 test('Prisma schema maps the three V3.1 tables', () => {
   assert.match(schema, /@@map\("user"\)/);
   assert.match(schema, /@@map\("pattern_generated"\)/);
   assert.match(schema, /@@map\("pattern_detection"\)/);
+  assert.match(schema, /@@map\("setting"\)/);
   assert.match(schema, /@map\("password_hash"\)/);
   assert.match(schema, /@map\("create_at"\)/);
   assert.match(schema, /@map\("deviceID"\)/);
@@ -66,4 +75,20 @@ test('follow-up migration adds non-negative authentic_count and counterfeit_coun
   assert.match(resultCountMigration, /pattern_generated_counterfeit_count_nonnegative/);
   assert.match(resultCountMigration, /CHECK \("authentic_count" >= 0\)/);
   assert.match(resultCountMigration, /CHECK \("counterfeit_count" >= 0\)/);
+});
+
+test('setting migration creates key/value table with unique parameter', () => {
+  assert.match(settingMigration, /CREATE TABLE "setting"/);
+  assert.match(settingMigration, /"parameter"\s+VARCHAR\(100\)\s+NOT NULL/);
+  assert.match(settingMigration, /"value"\s+VARCHAR\(255\)\s+NOT NULL/);
+  assert.match(settingMigration, /CREATE UNIQUE INDEX "setting_parameter_key"/);
+  assert.match(schema, /model Setting/);
+  assert.match(schema, /parameter\s+String\s+@unique/);
+  assert.match(schema, /value\s+String\s+@db\.VarChar\(255\)/);
+});
+
+test('seed migration inserts default max_scan setting', () => {
+  assert.match(maxScanSeedMigration, /INSERT INTO "setting"/);
+  assert.match(maxScanSeedMigration, /'max_scan'/);
+  assert.match(maxScanSeedMigration, /ON CONFLICT \("parameter"\) DO NOTHING/);
 });
