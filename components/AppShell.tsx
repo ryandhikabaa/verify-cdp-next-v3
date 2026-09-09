@@ -2,11 +2,11 @@
 
 import type {ReactNode} from 'react';
 import {useState} from 'react';
-import {BarChart3, BookOpenText, Grid2X2, History, Menu, ShieldCheck, Users} from 'lucide-react';
+import {BarChart3, BookOpenText, Grid2X2, History, Menu, Settings2, ShieldCheck, Users} from 'lucide-react';
 import {LogoutButton} from '@/components/auth/LogoutButton';
 import {TabButton} from '@/components/ui/TabButton';
 
-type AppSection = 'dashboard' | 'generator' | 'history' | 'users' | 'settings' | 'verify';
+type AppSection = 'dashboard' | 'generator' | 'history' | 'users' | 'configuration' | 'settings' | 'verify';
 
 function pageTitle(activeTab: AppSection) {
   switch (activeTab) {
@@ -18,6 +18,8 @@ function pageTitle(activeTab: AppSection) {
       return 'Verification History';
     case 'users':
       return 'User Management';
+    case 'configuration':
+      return 'Settings';
     case 'settings':
       return 'API Docs';
     case 'verify':
@@ -36,6 +38,7 @@ export function AppShell({activeTab, children}: {activeTab: AppSection; children
     {key: 'generator', label: 'Generator', href: '/app/generator', icon: <Grid2X2 className="h-4 w-4" />},
     {key: 'history', label: 'History Verifikasi', href: '/app/history', icon: <History className="h-4 w-4" />},
     {key: 'users', label: 'User', href: '/app/users', icon: <Users className="h-4 w-4" />},
+    {key: 'configuration', label: 'Setting', href: '/app/configuration', icon: <Settings2 className="h-4 w-4" />},
     {key: 'settings', label: 'API Docs', href: '/app/settings', icon: <BookOpenText className="h-4 w-4" />},
   ] as const;
 
@@ -61,6 +64,7 @@ export function AppShell({activeTab, children}: {activeTab: AppSection; children
               <TabButton active={activeTab === 'generator'} icon={<Grid2X2 className="h-4 w-4" />} label="Generator" href="/app/generator" variant="light" />
               <TabButton active={activeTab === 'history'} icon={<History className="h-4 w-4" />} label="History Verifikasi" href="/app/history" variant="light" />
               <TabButton active={activeTab === 'users'} icon={<Users className="h-4 w-4" />} label="User" href="/app/users" variant="light" />
+              <TabButton active={activeTab === 'configuration'} icon={<Settings2 className="h-4 w-4" />} label="Setting" href="/app/configuration" variant="light" />
               <TabButton active={activeTab === 'settings'} icon={<BookOpenText className="h-4 w-4" />} label="API Docs" href="/app/settings" variant="light" />
             </nav>
           </div>

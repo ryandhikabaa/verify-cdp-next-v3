@@ -15,7 +15,6 @@ import {renderApiQrToCanvas, V3_LOCKED_QR_MARGIN_MODULES, V3_LOCKED_QR_MODULE_CO
 const MAX_BATCH_COUNT = 100;
 const MAX_SEED_LENGTH = 24;
 const LIVE_PREVIEW_DEBOUNCE_MS = 120;
-const DEFAULT_QR_HVALUE = 'TELKOM';
 const PAYLOAD_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
 
 type PayloadDraft = {payload: string; hvalue: string};
@@ -100,11 +99,11 @@ function makeAutomaticBatchBase(settings: GeneratorSettings): GeneratorSettings 
 }
 
 /** Encapsulates generator state, persistence, downloads, and catalog coordination. */
-export function useGeneratorWorkspace() {
+export function useGeneratorWorkspace(initialHvalue: string) {
   const [settings, setSettings] = useState<GeneratorSettings>(STANDARD_CDP_SETTINGS);
   const [payloadDraft, setPayloadDraft] = useState<PayloadDraft>(() => ({
     payload: sanitizeCdpPayload(STANDARD_CDP_SETTINGS.payload ?? '') || makeRandomPayload(),
-    hvalue: DEFAULT_QR_HVALUE,
+    hvalue: initialHvalue,
   }));
   const [batchCount, setBatchCount] = useState(10);
   const [seedLength, setSeedLength] = useState(24);

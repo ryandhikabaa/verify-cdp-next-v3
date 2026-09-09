@@ -8,7 +8,7 @@ import {StoredPatternsPanel} from '@/components/generator/StoredPatternsPanel';
 import {useGeneratorWorkspace} from '@/hooks/useGeneratorWorkspace';
 
 /** Provides the migrated generator surface connected to the Next.js API. */
-export function GeneratorWorkspace() {
+export function GeneratorWorkspace({initialHvalue}: {initialHvalue: string}) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const {
     settings,
@@ -46,7 +46,7 @@ export function GeneratorWorkspace() {
     downloadCurrentPng,
     downloadDoc,
     downloadSelectedDocs,
-  } = useGeneratorWorkspace();
+  } = useGeneratorWorkspace(initialHvalue);
 
   useEffect(() => {
     if (!canvasRef.current || !previewImageData) return;

@@ -1,19 +1,8 @@
 import type {ReactNode} from 'react';
 import {Database, Download, LoaderCircle} from 'lucide-react';
 import {NumberField} from '@/components/ui/NumberField';
-import {HVALUE_MAX_LENGTH, RECT_PATTERN_DOT_DENSITY, V3_PAYLOAD_CONSTANTS, hvalueErrorMessage, validateHvalue} from '@/lib/cdp';
-import {HvalueValidationError} from '@/lib/cdp/hvalue';
+import {HVALUE_MAX_LENGTH, RECT_PATTERN_DOT_DENSITY, V3_PAYLOAD_CONSTANTS, validateHvalue} from '@/lib/cdp';
 import type {GeneratorSettings, GreyTextureVersion} from '@/lib/types';
-
-function getHvalueHelp(hvalue: string) {
-  if (!hvalue.trim()) return 'Hidden value wajib diisi sebelum Random data, Update preview, Simpan, Download, atau Generate batch.';
-  try {
-    validateHvalue(hvalue);
-    return `Maksimal ${HVALUE_MAX_LENGTH} karakter. Huruf besar/kecil dipertahankan.`;
-  } catch (error) {
-    return error instanceof HvalueValidationError ? hvalueErrorMessage(error.code) : 'Hidden value hanya boleh huruf atau angka.';
-  }
-}
 
 function isHvalueInvalid(hvalue: string) {
   if (!hvalue.trim()) return false;
@@ -82,83 +71,83 @@ export function GeneratorControls({
   return (
     <section className="grid gap-4 xl:grid-cols-[minmax(0,760px)_minmax(230px,300px)] xl:items-start xl:justify-between">
       <div className="space-y-3">
-        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-3">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-2">
           <div>
             <div className="text-[10px] font-black uppercase tracking-[0.22em] text-cyan-700">Generator</div>
-            <h2 className="mt-1 text-xl font-black tracking-[-0.04em] text-slate-950">Generate pattern</h2>
+            <h2 className="mt-0.5 text-lg font-black tracking-[-0.04em] text-slate-950">Generate pattern</h2>
           </div>
           <div className="hidden rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-[9px] font-bold text-slate-500 sm:inline-flex">
             Dot Density {(RECT_PATTERN_DOT_DENSITY * 100).toFixed(0)}% • Stochastic • Marker OFF
           </div>
         </div>
 
-        <div className="grid gap-2 sm:grid-cols-2">
+        <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.4fr)] sm:items-end">
           <NumberField label="Jumlah" value={batchCount} min={1} max={100} onChange={setBatchCount} />
           <NumberField label="Panjang Seed" value={seedLength} min={1} max={24} onChange={setSeedLength} />
-        </div>
-        <div className="grid grid-cols-[86px_minmax(0,1fr)] items-center gap-2 rounded-lg border border-slate-200 bg-slate-50/60 px-2 py-1.5">
-          <div className="text-[9px] font-black uppercase tracking-[0.16em] text-slate-500">Grey version</div>
-          <div className="grid grid-cols-3 gap-1.5" role="radiogroup" aria-label="Grey texture version">
-            {GREY_VERSION_OPTIONS.map((option) => {
-              const isActive = greyTextureVersion === option.value;
-              return (
-                <button
-                  key={option.value}
-                  type="button"
-                  role="radio"
-                  aria-checked={isActive}
-                  onClick={() => setGreyTextureVersion(option.value)}
-                  className={`rounded-md border px-2 py-1 text-[10px] font-black uppercase tracking-wide transition ${
-                    isActive
-                      ? 'border-slate-500 bg-slate-700 text-white'
-                      : 'border-slate-200 bg-white text-slate-500 hover:border-slate-300 hover:bg-slate-50'
-                  }`}
-                >
-                  {option.label}
-                </button>
-              );
-            })}
+          <div className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-2">
+            <div className="text-[9px] font-black uppercase tracking-[0.16em] text-slate-500">Grey</div>
+            <div className="grid grid-cols-3 gap-1" role="radiogroup" aria-label="Grey texture version">
+              {GREY_VERSION_OPTIONS.map((option) => {
+                const isActive = greyTextureVersion === option.value;
+                return (
+                  <button
+                    key={option.value}
+                    type="button"
+                    role="radio"
+                    aria-checked={isActive}
+                    onClick={() => setGreyTextureVersion(option.value)}
+                    className={`rounded-md border px-2 py-1.5 text-[10px] font-black uppercase tracking-wide transition ${
+                      isActive
+                        ? 'border-slate-500 bg-slate-700 text-white'
+                        : 'border-slate-200 bg-white text-slate-500 hover:border-slate-300 hover:bg-slate-50'
+                    }`}
+                  >
+                    {option.label}
+                  </button>
+                );
+              })}
+            </div>
           </div>
         </div>
-        <div className="rounded-lg border border-cyan-100 bg-cyan-50/20 p-2.5">
+
+        <div className="rounded-lg border border-cyan-100 bg-cyan-50/20 p-2">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="text-[9px] font-black uppercase tracking-[0.18em] text-cyan-700">Payload layout V3</div>
-              <div className="text-[9px] font-bold text-cyan-700">QR anchor</div>
+            <div className="text-[9px] font-bold text-cyan-700">QR anchor</div>
           </div>
-          <div className="mt-2 grid gap-2 lg:grid-cols-[minmax(0,0.82fr)_minmax(0,1fr)] lg:items-start">
-            <label className="block lg:col-span-2">
-              <span className="mb-1 block text-[9px] font-black uppercase tracking-wider text-slate-500">Hidden value</span>
+          <div className="mt-1.5 grid gap-1.5 sm:grid-cols-[minmax(0,0.6fr)_minmax(0,1fr)]">
+            <label className="block">
+              <span className="mb-0.5 block text-[9px] font-black uppercase tracking-wider text-slate-500">Hidden value · dari Setting</span>
               <input
                 value={payloadDraft.hvalue}
-                onChange={(event) => setPayloadDraft((current) => ({
-                  ...current,
-                  hvalue: event.target.value.slice(0, HVALUE_MAX_LENGTH),
-                }))}
+                readOnly
                 maxLength={HVALUE_MAX_LENGTH}
                 inputMode="text"
                 autoComplete="off"
                 spellCheck={false}
                 aria-invalid={isHvalueInvalid(payloadDraft.hvalue)}
                 aria-label="Hidden value"
-                className="w-full rounded-md border border-slate-200 bg-white px-2.5 py-1.5 font-mono text-xs text-slate-800 outline-none focus:border-cyan-300"
+                className="w-full rounded-md border border-slate-200 bg-slate-100 px-2.5 py-1.5 font-mono text-xs text-slate-500 outline-none cursor-not-allowed"
                 aria-describedby="hvalue-help"
               />
-              <span id="hvalue-help" className="mt-1 block text-[9px] font-semibold text-slate-500">
-                {getHvalueHelp(payloadDraft.hvalue)}
+              <span id="hvalue-help" className="mt-0.5 block text-[9px] font-semibold text-slate-500">
+                Dikelola di Setting · read-only.
               </span>
             </label>
-            <label className="block lg:col-span-2">
-              <span className="mb-1 block text-[9px] font-black uppercase tracking-wider text-slate-500">payload · V3 pattern kanan QR</span>
+            <label className="block">
+              <span className="mb-0.5 block text-[9px] font-black uppercase tracking-wider text-slate-500">payload · V3 pattern kanan QR</span>
               <input value={payloadDraft.payload} onChange={(event) => setPayloadDraft((current) => ({...current, payload: normalizePayloadInput(event.target.value)}))} maxLength={CDP_PAYLOAD_MAX_LENGTH} inputMode="text" className="w-full rounded-md border border-slate-200 bg-white px-2.5 py-1.5 font-mono text-xs text-slate-800 outline-none focus:border-cyan-300" />
             </label>
           </div>
-          <div className="mt-2 flex flex-wrap items-center gap-2">
-            <button type="button" onClick={onRandomPayloadDraft} className="rounded-md border border-cyan-200 bg-white px-2.5 py-1.5 text-[11px] font-black text-cyan-700 transition hover:bg-cyan-50">
-              Random data
-            </button>
-            <button type="button" onClick={onApplyPayloadDraft} className="rounded-md bg-cyan-700 px-2.5 py-1.5 text-[11px] font-black text-white transition hover:bg-cyan-800">
-              Update preview
-            </button>
+          <div className="mt-1.5 flex flex-wrap items-center justify-between gap-1.5">
+            <div className="flex flex-wrap items-center gap-1.5">
+              <button type="button" onClick={onRandomPayloadDraft} className="rounded-md border border-cyan-200 bg-white px-2.5 py-1 text-[11px] font-black text-cyan-700 transition hover:bg-cyan-50">
+                Random data
+              </button>
+              <button type="button" onClick={onApplyPayloadDraft} className="rounded-md bg-cyan-700 px-2.5 py-1 text-[11px] font-black text-white transition hover:bg-cyan-800">
+                Update preview
+              </button>
+            </div>
             <span className="text-[9px] font-semibold text-slate-500">V3 maksimal 24 karakter · QR kiri · satu pattern kanan.</span>
           </div>
         </div>
@@ -166,12 +155,12 @@ export function GeneratorControls({
           {generationError ?? 'Payload V3 menggunakan 1–24 karakter: A-Z, a-z, 0-9, - dan _.'}
         </div>
 
-        <div className="flex flex-wrap gap-2 border-t border-slate-100 pt-2">
+        <div className="flex flex-wrap gap-1.5 border-t border-slate-100 pt-2">
           <button
             type="button"
             onClick={onSave}
             disabled={isSaving || qrLoading || Boolean(generationError)}
-            className="inline-flex min-h-9 items-center justify-center gap-1.5 rounded-lg bg-cyan-700 px-3.5 text-xs font-bold text-white transition hover:bg-cyan-800 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50"
+            className="inline-flex min-h-8 items-center justify-center gap-1.5 rounded-lg bg-cyan-700 px-3 text-xs font-bold text-white transition hover:bg-cyan-800 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50"
           >
             {isSaving ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Database className="h-4 w-4" />}
             {isSaving ? 'Menyimpan...' : 'Simpan'}
@@ -181,7 +170,7 @@ export function GeneratorControls({
             type="button"
             onClick={onGenerateBatch}
             disabled={isSaving || qrLoading || Boolean(generationError)}
-            className="inline-flex min-h-9 items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3.5 text-xs font-bold text-slate-700 transition hover:border-slate-300 hover:bg-slate-50 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50"
+            className="inline-flex min-h-8 items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 transition hover:border-slate-300 hover:bg-slate-50 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50"
           >
             {isSaving ? <LoaderCircle className="h-4 w-4 animate-spin" /> : null}
             {isSaving ? 'Memproses...' : 'Generate Batch'}
@@ -191,7 +180,7 @@ export function GeneratorControls({
             type="button"
             onClick={onDownload}
             disabled={isSaving || qrLoading || Boolean(generationError)}
-            className="inline-flex min-h-9 items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3.5 text-xs font-bold text-slate-700 transition hover:border-slate-300 hover:bg-slate-50 active:scale-[0.99]"
+            className="inline-flex min-h-8 items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 transition hover:border-slate-300 hover:bg-slate-50 active:scale-[0.99]"
           >
             <Download className="h-4 w-4" />
             Download
@@ -201,9 +190,9 @@ export function GeneratorControls({
         {qrError ? <div className="text-[10px] font-semibold text-rose-600">{qrError}</div> : null}
       </div>
 
-      <div className="rounded-lg border border-slate-200 bg-slate-50/70 p-2.5">
+      <div className="rounded-lg border border-slate-200 bg-slate-50/70 p-2">
         <div className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-400">Preview</div>
-        <div className="mt-1.5 flex min-h-[190px] items-center justify-center overflow-auto rounded-md border border-slate-200 bg-white p-2">
+        <div className="mt-1 flex min-h-[190px] items-center justify-center overflow-auto rounded-md border border-slate-200 bg-white p-2">
           {previewCanvas}
         </div>
       </div>

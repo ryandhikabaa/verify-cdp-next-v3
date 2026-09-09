@@ -22,6 +22,7 @@ export function hasRoleAccess(role: string | null | undefined, allowedRoles: rea
 
 export function getRequiredRolesForAppPath(pathname: string): readonly AppRole[] | null {
   if (pathname.startsWith('/app/users')) return ['admin'];
+  if (pathname.startsWith('/app/configuration')) return ['admin'];
   if (pathname.startsWith('/app/settings')) return ['admin'];
   if (pathname.startsWith('/app/history')) return ['admin'];
   if (pathname.startsWith('/app/generator')) return ['admin'];
@@ -32,6 +33,8 @@ export function getRequiredRolesForAppPath(pathname: string): readonly AppRole[]
 }
 
 export function getRequiredRolesForApiPath(pathname: string, method: string): readonly AppRole[] | null {
+  if (pathname === '/api/settings') return ['admin'];
+
   if (pathname === '/api/users' && method === 'GET') return ['admin'];
   if (pathname === '/api/users' && method === 'POST') return ['admin'];
   if (pathname.startsWith('/api/users/')) return ['admin'];

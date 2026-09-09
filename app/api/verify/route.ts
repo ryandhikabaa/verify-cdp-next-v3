@@ -2,6 +2,7 @@ import {NextRequest} from 'next/server';
 import {apiError, apiSuccess} from '@/lib/api-response';
 import {decryptPayloadToSeed} from '@/lib/cdp';
 import {prisma} from '@/lib/db/prisma';
+import {resolveMaxScanLimit} from '@/lib/db/settings';
 import {buildSharedTrackingNotes, resolveSharedVerifyStatus} from '@/lib/verifier-core';
 
 const MAX_IMAGE_DATA_LENGTH = 5_000_000;
@@ -10,20 +11,7 @@ const LABEL_MAX_LENGTH = 255;
 const THREE_PART_V21_LAYOUT = 'three-part-v2.1';
 const V3_QR_PATTERN_LAYOUT = 'v3-qr-pattern';
 const CDP_PAYLOAD_CHUNK_PATTERN = /^[A-Z0-9]{12}$/;
-const MAX_SCAN_SETTING_KEY = 'max_scan';
-const DEFAULT_MAX_SCAN = 10;
 
-/** Reads the max_scan setting; falls back to DEFAULT_MAX_SCAN when unset or invalid. */
-async function resolveMaxScanLimit() {
-  const row = await prisma.setting.findUnique({
-    where: {parameter: MAX_SCAN_SETTING_KEY},
-  });
-
-  if (!row) return DEFAULT_MAX_SCAN;
-
-  const parsed = Number.parseInt(row.value, 10);
-  return Number.isFinite(parsed) && parsed >= 0 ? parsed : DEFAULT_MAX_SCAN;
-}
 function normalizeTimestamp(value: unknown) {
   if (typeof value !== 'string' || !value.trim()) return null;
 
@@ -280,7 +268,8 @@ export async function POST(request: NextRequest) {
     ]);
     // A matched payload that has already been scanned max_scan (or more) times is
     // treated as COUNTERFEIT: the scan exceeds the permitted limit.
-    const exceedsMaxScan = Boolean(pattern) && pattern!.scannedCount >= maxScanLimit;
+    // A limit of `0` disables the cap entirely (unlimited scans).
+    const exceedsMaxScan = Boolean(pattern) && maxScanLimit > 0 && pattern!.scannedCount >= maxScanLimit;
     // V3 and v2.1 resolve status directly from the pattern_payload lookup; the shared
     // helper's payloadMode type only covers the legacy/encrypted tracking path.
     const isStructuredLayout = isThreePartV21 || isV3QrPattern;
@@ -353,6 +342,7 @@ export async function POST(request: NextRequest) {
             scannedCount: {increment: 1},
             ...(finalStatus === 'AUTHENTIC' ? {authenticCount: {increment: 1}} : {}),
             ...(finalStatus === 'COUNTERFEIT' ? {counterfeitCount: {increment: 1}} : {}),
+            updateAt: new Date(),
           },
         });
       }
