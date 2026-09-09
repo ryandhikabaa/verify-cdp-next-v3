@@ -1,8 +1,9 @@
 import Link from 'next/link';
+import type {Route} from 'next';
 import type {ReactNode} from 'react';
 
 /** Renders a top-level workspace tab trigger with active styling. */
-export function TabButton({active, icon, label, href, variant = 'dark'}: {active: boolean; icon: ReactNode; label: string; href: string; variant?: 'dark' | 'light'}) {
+export function TabButton({active, icon, label, href, variant = 'dark'}: {active: boolean; icon: ReactNode; label: string; href: Route; variant?: 'dark' | 'light'}) {
   const classes =
     variant === 'light'
       ? active

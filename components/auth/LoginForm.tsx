@@ -1,6 +1,7 @@
 'use client';
 
 import {useState} from 'react';
+import type {Route} from 'next';
 import {Eye, EyeOff, LockKeyhole, User2} from 'lucide-react';
 import {useRouter, useSearchParams} from 'next/navigation';
 import {ApiClientError, fetchApi} from '@/lib/api-client';
@@ -29,7 +30,7 @@ export function LoginForm() {
         body: JSON.stringify({username, password}),
       });
 
-      router.replace(redirectTarget);
+      router.replace(redirectTarget as Route);
       router.refresh();
     } catch (error) {
       if (error instanceof ApiClientError) {

@@ -1,6 +1,7 @@
 "use client";
 
 import Link from 'next/link';
+import type {Route} from 'next';
 import {useMemo, useState} from 'react';
 import {ArrowDown, ArrowUp, ArrowUpDown, Check, ChevronLeft, ChevronRight, Copy, Download, Eye, ExternalLink, MapPin} from 'lucide-react';
 import {HistoryDetailsModal} from '@/components/history/HistoryDetailsModal';
@@ -44,7 +45,7 @@ function formatLocation(latitude: number | null, longitude: number | null) {
 type HistorySort = 'payload' | 'source' | 'status' | 'device' | 'location' | 'time';
 type SortDirection = 'asc' | 'desc';
 
-function buildHistoryHref(search: string, status: string, source: string, page: number, sort: HistorySort, direction: SortDirection) {
+function buildHistoryHref(search: string, status: string, source: string, page: number, sort: HistorySort, direction: SortDirection): Route {
   const params = new URLSearchParams();
 
   if (search) params.set('search', search);
@@ -55,7 +56,7 @@ function buildHistoryHref(search: string, status: string, source: string, page: 
   if (page > 1) params.set('page', String(page));
 
   const query = params.toString();
-  return query ? `/app/history?${query}` : '/app/history';
+  return (query ? `/app/history?${query}` : '/app/history') as Route;
 }
 
 function buildExportHref(search: string, status: string, source: string) {

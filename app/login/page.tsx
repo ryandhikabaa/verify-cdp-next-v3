@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import type {Route} from 'next';
 import {redirect} from 'next/navigation';
 import {LoginForm} from '@/components/auth/LoginForm';
 import {PublicShell} from '@/components/PublicShell';
@@ -9,7 +10,7 @@ export default async function LoginPage({searchParams}: {searchParams: Promise<{
   const session = await getCurrentSession();
   const params = await searchParams;
   const nextPath = params.next && params.next.startsWith('/app') ? params.next : '/app/dashboard';
-  if (session) redirect(nextPath);
+  if (session) redirect(nextPath as Route);
 
   return (
     <PublicShell>

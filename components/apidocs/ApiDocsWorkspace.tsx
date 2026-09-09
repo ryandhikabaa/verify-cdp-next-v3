@@ -1,6 +1,7 @@
 'use client';
 
 import {useEffect, useMemo, useState} from 'react';
+import type {JSX} from 'react';
 import {BookOpenText, Check, ChevronDown, Copy, Download, Globe, LockKeyhole, Play, Search, Server, ShieldCheck} from 'lucide-react';
 import {endpointDocs, type EndpointDocDefinition} from '@/lib/api-docs';
 
