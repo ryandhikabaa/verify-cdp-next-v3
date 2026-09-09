@@ -6,7 +6,7 @@
 
 set -euo pipefail
 
-APP_NAME="dotvera"
+APP_NAME="dotvera_v3"
 cd "$(dirname "$0")"
 
 if ! command -v pm2 > /dev/null 2>&1; then
