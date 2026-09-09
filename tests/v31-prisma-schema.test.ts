@@ -25,6 +25,14 @@ const maxScanSeedMigration = readFileSync(
   path.join(root, 'prisma', 'migrations', '20260908140000_seed_max_scan_setting', 'migration.sql'),
   'utf8',
 );
+const hvalueSeedMigration = readFileSync(
+  path.join(root, 'prisma', 'migrations', '20260909120000_seed_hvalue_setting', 'migration.sql'),
+  'utf8',
+);
+const settingTriggerMigration = readFileSync(
+  path.join(root, 'prisma', 'migrations', '20260909130000_add_setting_update_at_trigger', 'migration.sql'),
+  'utf8',
+);
 
 test('Prisma schema maps the three V3.1 tables', () => {
   assert.match(schema, /@@map\("user"\)/);
@@ -91,4 +99,17 @@ test('seed migration inserts default max_scan setting', () => {
   assert.match(maxScanSeedMigration, /INSERT INTO "setting"/);
   assert.match(maxScanSeedMigration, /'max_scan'/);
   assert.match(maxScanSeedMigration, /ON CONFLICT \("parameter"\) DO NOTHING/);
+});
+
+test('seed migration inserts default hvalue setting', () => {
+  assert.match(hvalueSeedMigration, /INSERT INTO "setting"/);
+  assert.match(hvalueSeedMigration, /'hvalue'/);
+  assert.match(hvalueSeedMigration, /ON CONFLICT \("parameter"\) DO NOTHING/);
+});
+
+test('setting table gets the same update_at trigger as the other tables', () => {
+  assert.match(settingTriggerMigration, /CREATE OR REPLACE FUNCTION set_setting_update_at/);
+  assert.match(settingTriggerMigration, /CREATE TRIGGER set_setting_update_at/);
+  assert.match(settingTriggerMigration, /BEFORE UPDATE ON "setting"/);
+  assert.match(settingTriggerMigration, /EXECUTE FUNCTION set_setting_update_at/);
 });
