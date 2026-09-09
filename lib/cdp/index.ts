@@ -31,7 +31,7 @@ export {
 	parseQrGenerateUpstreamBody,
 	qrGenerateHttpErrorMessage,
 	requestQrGenerateFromUpstream,
-	resolveLockedQrGenerateApiUrl,
+	resolveQrGenerateApiUrl,
 } from './qr-generate';
 export type {QrGenerateSuccess} from './qr-generate';
 export {decodeV3Payload, encodeV3Payload, validateV3Payload, V3_PAYLOAD_CONSTANTS} from './v3-payload';

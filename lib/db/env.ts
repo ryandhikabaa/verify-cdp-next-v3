@@ -4,6 +4,17 @@ const DEFAULT_DB_PORT = '5432';
 const DEFAULT_DB_NAME = 'dotvera_v3';
 const DEFAULT_SOURCE_DB_NAME = 'dotvera_v2';
 export const LOCKED_QR_GENERATE_API_URL = 'https://authenticity-qr.pstlocal.net/api/Checking/qrcode-generate-dynamic';
+// Endpoint internal LAN yang hanya listen HTTP; tidak pernah dipakai di luar jaringan privat.
+export const LAN_QR_GENERATE_API_URL = 'http://192.168.5.164:8093/api/Checking/qrcode-generate-dynamic'; // NOSONAR S5332
+/**
+ * Host QR generate yang diizinkan. Layanan kanonik di-balik proxy HTTPS
+ * (authenticity-qr.pstlocal.net) tidak selalu terjangkau dari server produksi,
+ * jadi endpoint LAN langsung juga diterima. Entri di luar daftar ini ditolak.
+ */
+export const QR_GENERATE_ALLOWED_API_URLS = [
+  LOCKED_QR_GENERATE_API_URL,
+  LAN_QR_GENERATE_API_URL,
+] as const;
 
 function readEnv(name: string, fallback = '') {
   const value = process.env[name];

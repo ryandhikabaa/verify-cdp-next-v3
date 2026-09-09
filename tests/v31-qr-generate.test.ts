@@ -10,6 +10,7 @@ import {
   parseQrGenerateUpstreamBody,
   requestQrGenerateFromUpstream,
 } from '../lib/cdp/qr-generate';
+import {LAN_QR_GENERATE_API_URL} from '../lib/db/env';
 
 const SUCCESS_BODY = {
   status: 'success',
@@ -171,6 +172,47 @@ test('refuses to retarget a different QR host', async () => {
     () => requestQrGenerateFromUpstream({
       hvalue: 'TELKOM',
       url: 'https://example.invalid/qr',
+      fetchImpl,
+    }),
+    (error: unknown) => error instanceof QrGenerateError && error.status === 500,
+  );
+  assert.equal(fetchCalls, 0);
+});
+
+test('accepts the LAN fallback endpoint from the allowlist', async () => {
+  const fetchImpl: typeof fetch = async (input, init) => {
+    assert.equal(String(input), LAN_QR_GENERATE_API_URL);
+    assert.equal(init?.method, 'POST');
+    assert.equal(init?.body, JSON.stringify({hvalue: 'TELKOM'}));
+    return jsonResponse(200, SUCCESS_BODY);
+  };
+
+  const result = await requestQrGenerateFromUpstream({
+    hvalue: 'TELKOM',
+    url: LAN_QR_GENERATE_API_URL,
+    fetchImpl,
+  });
+
+  assert.deepEqual(result, {
+    qr_payload: 'b0df621A',
+    qr_hvalue: 'TELKOM',
+    qr_secret1: 'A8C2D3E0AECE',
+    qr_secret2: '1CE6',
+    qr_image: FAKE_QR_IMAGE_DATA_URL,
+  });
+});
+
+test('rejects a LAN URL that only differs by path', async () => {
+  let fetchCalls = 0;
+  const fetchImpl: typeof fetch = async () => {
+    fetchCalls += 1;
+    return jsonResponse(200, SUCCESS_BODY);
+  };
+
+  await assert.rejects(
+    () => requestQrGenerateFromUpstream({
+      hvalue: 'TELKOM',
+      url: 'http://192.168.5.164:8093/api/Checking/other-endpoint',
       fetchImpl,
     }),
     (error: unknown) => error instanceof QrGenerateError && error.status === 500,

@@ -1,9 +1,8 @@
-import {LOCKED_QR_GENERATE_API_URL} from '@/lib/db/env';
+import {QR_GENERATE_ALLOWED_API_URLS} from '@/lib/db/env';
 import {HvalueValidationError, validateHvalue} from '@/lib/cdp/hvalue';
 
 export const QR_GENERATE_TIMEOUT_MS = 15_000;
-export const QR_GENERATE_LOCKED_URL = LOCKED_QR_GENERATE_API_URL;
-
+export const QR_GENERATE_LOCKED_URL = QR_GENERATE_ALLOWED_API_URLS[0];
 export const QR_GENERATE_ERROR_MESSAGES = {
   invalidJson: 'Request body harus berupa JSON yang valid.',
   malformed: 'Respon QR tidak valid. Proses dihentikan.',
@@ -138,15 +137,16 @@ export function parseQrGenerateUpstreamBody(payload: unknown): QrGenerateSuccess
   };
 }
 
-export function resolveLockedQrGenerateApiUrl(configuredUrl: string) {
-  if (configuredUrl.trim() !== QR_GENERATE_LOCKED_URL) {
+export function resolveQrGenerateApiUrl(configuredUrl: string) {
+  const normalized = configuredUrl.trim();
+  if (!QR_GENERATE_ALLOWED_API_URLS.includes(normalized as (typeof QR_GENERATE_ALLOWED_API_URLS)[number])) {
     throw new QrGenerateError({
       message: QR_GENERATE_ERROR_MESSAGES.network,
       status: 500,
       code: 'network',
     });
   }
-  return configuredUrl;
+  return normalized;
 }
 
 export async function requestQrGenerateFromUpstream(options: {
@@ -156,7 +156,7 @@ export async function requestQrGenerateFromUpstream(options: {
   timeoutMs?: number;
   onRawResponse?: (raw: {httpStatus: number; rawBody: string}) => void | Promise<void>;
 }): Promise<QrGenerateSuccess> {
-  const url = resolveLockedQrGenerateApiUrl(options.url);
+  const url = resolveQrGenerateApiUrl(options.url);
   const timeoutMs = options.timeoutMs ?? QR_GENERATE_TIMEOUT_MS;
   const fetchImpl = options.fetchImpl ?? fetch;
   const controller = new AbortController();
