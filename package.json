@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "node --use-system-ca server.mjs",
     "dev:system-ca": "node --use-system-ca server.mjs",
-    "dev:http": "set HTTPS=false&& node server.mjs",
+    "dev:https": "set HTTPS=true&& node --use-system-ca server.mjs",
     "build": "next build",
     "start": "set NODE_ENV=production&& node server.mjs",
     "lint": "tsc --noEmit",

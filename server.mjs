@@ -7,7 +7,8 @@ import next from 'next';
 const dev = process.env.NODE_ENV !== 'production';
 const hostname = process.env.HOSTNAME || '0.0.0.0';
 const port = Number(process.env.PORT || 3004);
-const useHttps = process.env.HTTPS !== 'false';
+const displayUrl = `localhost:${port}`;
+const useHttps = process.env.HTTPS === 'true';
 const certPath = './certs/localhost-cert.pem';
 const keyPath = './certs/localhost-key.pem';
 
@@ -27,13 +28,13 @@ app.prepare().then(() => {
     );
 
     httpsServer.listen(port, hostname, () => {
-      console.log(`Next HTTPS server running on https://${hostname}:${port}`);
+      console.log(`Next HTTPS server running on https://${displayUrl}`);
     });
     return;
   }
 
   const httpServer = createHttpServer(listener);
   httpServer.listen(port, hostname, () => {
-    console.log(`Next HTTP server running on http://${hostname}:${port}`);
+    console.log(`Next HTTP server running on http://${displayUrl}`);
   });
 });
