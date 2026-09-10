@@ -37,6 +37,7 @@ export function GeneratorWorkspace({initialHvalue}: {initialHvalue: string}) {
     batchConfirmOpen,
     setBatchConfirmOpen,
     processingMessage,
+    batchProgress,
     patternLibrary,
     requestSaveCurrentPattern,
     requestGenerateBatch,
@@ -200,6 +201,22 @@ export function GeneratorWorkspace({initialHvalue}: {initialHvalue: string}) {
               <div className="mt-5 text-[11px] font-black uppercase tracking-[0.24em] text-cyan-700">Processing</div>
               <h3 className="mt-2 text-2xl font-black tracking-[-0.04em] text-slate-950">Mohon tunggu</h3>
               <p className="mt-3 text-sm leading-7 text-slate-500">{processingMessage}</p>
+              {batchProgress ? (
+                <div className="mt-5">
+                  <div className="flex items-baseline justify-between">
+                    <span className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">Progress</span>
+                    <span className="font-mono text-lg font-black text-cyan-700" aria-live="polite">
+                      {batchProgress.done}/{batchProgress.total}
+                    </span>
+                  </div>
+                  <progress
+                    className="mt-2 block h-2.5 w-full appearance-none overflow-hidden rounded-full bg-slate-100 [&::-moz-progress-bar]:rounded-full [&::-moz-progress-bar]:bg-cyan-700 [&::-webkit-progress-bar]:rounded-full [&::-webkit-progress-bar]:bg-slate-100 [&::-webkit-progress-value]:rounded-full [&::-webkit-progress-value]:bg-cyan-700 transition-all duration-300 ease-out"
+                    max={batchProgress.total}
+                    value={batchProgress.done}
+                    aria-label="Progress generate batch"
+                  />
+                </div>
+              ) : null}
             </div>
           </div>
         )}
