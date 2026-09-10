@@ -5,6 +5,7 @@ import {hashPassword} from '@/lib/db/dotvera';
 import {isPrismaUniqueViolation} from '@/lib/db/prisma-errors';
 import {prisma} from '@/lib/db/prisma';
 import {mapPublicUser} from '@/lib/db/users';
+import {CreateUserSchema} from '@/lib/schemas';
 
 /** Returns the full user catalog ordered by newest first. */
 export async function GET() {
@@ -21,11 +22,19 @@ export async function GET() {
 
 /** Creates a new internal user. */
 export async function POST(request: NextRequest) {
-  const {nama, username, password} = await request.json();
-
-  if (!nama || !username || !password) {
-    return apiError({status: 400, message: `Field wajib diisi. Tipe akun yang tersedia: ${APP_ROLES.join(', ')}.`});
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    return apiError({status: 400, message: 'Body JSON tidak valid.'});
   }
+
+  const validation = CreateUserSchema.safeParse(body);
+  if (!validation.success) {
+    return apiError({status: 400, message: validation.error.issues.map((err) => `${err.path.join('.')}: ${err.message}`).join(', ')});
+  }
+
+  const {nama, username, password} = validation.data;
 
   try {
     const user = await prisma.user.create({

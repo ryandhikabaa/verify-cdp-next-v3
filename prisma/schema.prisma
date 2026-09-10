@@ -24,31 +24,31 @@ model User {
 
 /// Generated V3.1 composite. Identity is pattern_payload, not serial.
 model PatternGenerated {
-  id              String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  qrPayload       String              @map("qr_payload")
-  qrHvalue        String              @map("qr_hvalue") @db.VarChar(7)
-  qrSecret1       String              @map("qr_secret1")
-  qrSecret2       String              @map("qr_secret2")
-  qrImage         String              @map("qr_image")
-  patternPayload  String              @unique @map("pattern_payload") @db.VarChar(24)
-  imageData       String?             @map("image_data")
-  imageBlob       Bytes?              @map("image_blob")
-  density         Float
-  size            Int?
-  style           String?             @db.VarChar(100)
-  layoutVersion   String              @default("v3-qr-pattern") @map("layout_version") @db.VarChar(50)
-  qrWidthPx       Int?                @map("qr_width_px")
-  qrHeightPx      Int?                @map("qr_height_px")
-  patternWidthPx  Int?                @map("pattern_width_px")
-  patternHeightPx Int?                @map("pattern_height_px")
-  gapPx             Int?                @map("gap_px")
-  canvasWidthPx     Int?                @map("canvas_width_px")
-  canvasHeightPx    Int?                @map("canvas_height_px")
-  scannedCount      Int                 @default(0) @map("scanned_count")
-  authenticCount    Int                 @default(0) @map("authentic_count")
-  counterfeitCount  Int                 @default(0) @map("counterfeit_count")
-  createAt          DateTime            @default(now()) @map("create_at") @db.Timestamptz(6)
-  updateAt          DateTime            @default(now()) @updatedAt @map("update_at") @db.Timestamptz(6)
+  id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  qrPayload        String   @map("qr_payload")
+  qrHvalue         String   @map("qr_hvalue") @db.VarChar(7)
+  qrSecret1        String   @map("qr_secret1")
+  qrSecret2        String   @map("qr_secret2")
+  qrImage          String   @map("qr_image")
+  patternPayload   String   @unique @map("pattern_payload") @db.VarChar(24)
+  imageData        String?  @map("image_data")
+  imageBlob        Bytes?   @map("image_blob")
+  density          Float
+  size             Int?
+  style            String?  @db.VarChar(100)
+  layoutVersion    String   @default("v3-qr-pattern") @map("layout_version") @db.VarChar(50)
+  qrWidthPx        Int?     @map("qr_width_px")
+  qrHeightPx       Int?     @map("qr_height_px")
+  patternWidthPx   Int?     @map("pattern_width_px")
+  patternHeightPx  Int?     @map("pattern_height_px")
+  gapPx            Int?     @map("gap_px")
+  canvasWidthPx    Int?     @map("canvas_width_px")
+  canvasHeightPx   Int?     @map("canvas_height_px")
+  createAt         DateTime @default(now()) @map("create_at") @db.Timestamptz(6)
+  updateAt         DateTime @default(now()) @updatedAt @map("update_at") @db.Timestamptz(6)
+  scannedCount     Int      @default(0) @map("scanned_count")
+  authenticCount   Int      @default(0) @map("authentic_count")
+  counterfeitCount Int      @default(0) @map("counterfeit_count")
 
   @@index([layoutVersion], map: "idx_pattern_generated_layout_version")
   @@index([qrHvalue], map: "idx_pattern_generated_qr_hvalue")

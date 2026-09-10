@@ -4,13 +4,22 @@ import {normalizeRole} from '@/lib/auth/roles';
 import {apiError, apiSuccess} from '@/lib/api-response';
 import {verifyPassword} from '@/lib/db/dotvera';
 import {prisma} from '@/lib/db/prisma';
+import {LoginSchema} from '@/lib/schemas';
 
 export async function POST(request: NextRequest) {
-  const {username, password} = await request.json();
-
-  if (!username || !password) {
-    return apiError({status: 400, message: 'Username dan password wajib diisi.'});
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    return apiError({status: 400, message: 'Body JSON tidak valid.'});
   }
+
+  const validation = LoginSchema.safeParse(body);
+  if (!validation.success) {
+    return apiError({status: 400, message: validation.error.issues.map((err) => `${err.path.join('.')}: ${err.message}`).join(', ')});
+  }
+
+  const {username, password} = validation.data;
 
   try {
     const user = await prisma.user.findFirst({

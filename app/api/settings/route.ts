@@ -1,6 +1,7 @@
 import {NextRequest} from 'next/server';
 import {apiError, apiSuccess} from '@/lib/api-response';
 import {getSetting, HVALUE_SETTING_KEY, MAX_SCAN_SETTING_KEY, setSetting} from '@/lib/db/settings';
+import {SettingsUpdateSchema} from '@/lib/schemas';
 
 const EDITABLE_SETTING_KEYS = [MAX_SCAN_SETTING_KEY, HVALUE_SETTING_KEY] as const;
 
@@ -34,35 +35,26 @@ export async function PATCH(request: NextRequest) {
     return apiError({status: 400, message: 'Body JSON tidak valid.'});
   }
 
-  if (!body || typeof body !== 'object') {
-    return apiError({status: 400, message: 'Body wajib berupa objek setting.'});
+  const validation = SettingsUpdateSchema.safeParse(body);
+  if (!validation.success) {
+    return apiError({status: 400, message: validation.error.issues.map((err) => `${err.path.join('.')}: ${err.message}`).join(', ')});
   }
 
   const updates: Array<{parameter: string; value: string}> = [];
 
   for (const parameter of EDITABLE_SETTING_KEYS) {
-    if (!(parameter in body)) continue;
+    if (!(parameter in validation.data)) continue;
 
     if (parameter === MAX_SCAN_SETTING_KEY) {
-      const raw = body[parameter];
-      const parsed = typeof raw === 'number' ? raw : Number.parseInt(String(raw), 10);
-
-      if (!Number.isInteger(parsed) || parsed < 0) {
-        return apiError({status: 400, message: 'max_scan harus berupa angka bulat >= 0 (0 berarti tanpa batas).'});
+      if (validation.data.max_scan !== undefined) {
+        updates.push({parameter, value: String(validation.data.max_scan)});
       }
-
-      updates.push({parameter, value: String(parsed)});
     }
 
     if (parameter === HVALUE_SETTING_KEY) {
-      const raw = body[parameter];
-      const value = typeof raw === 'string' ? raw.trim() : '';
-
-      if (!value || value.length > 7 || !HVALUE_ALPHABET.test(value)) {
-        return apiError({status: 400, message: 'hvalue harus 1–7 karakter, hanya huruf atau angka.'});
+      if (validation.data.hvalue !== undefined) {
+        updates.push({parameter, value: validation.data.hvalue});
       }
-
-      updates.push({parameter, value});
     }
   }
 

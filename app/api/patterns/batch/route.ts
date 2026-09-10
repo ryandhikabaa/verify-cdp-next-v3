@@ -2,22 +2,38 @@ import {NextRequest} from 'next/server';
 import {apiError, apiSuccess} from '@/lib/api-response';
 import {prisma} from '@/lib/db/prisma';
 import {writeDebugLog} from '@/lib/debug-log';
+import {BatchPatternRequestSchema} from '@/lib/schemas';
 
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json();
-    if (!Array.isArray(body?.docs) || body.docs.length === 0) return apiError({status: 400, message: 'Docs batch wajib diisi.'});
-    const docs = body.docs.map((doc: Record<string, unknown>) => ({
-      qrPayload: String(doc.qr_payload ?? ''), qrHvalue: String(doc.qr_hvalue ?? ''),
-      qrSecret1: String(doc.qr_secret1 ?? ''), qrSecret2: String(doc.qr_secret2 ?? ''), qrImage: String(doc.qr_image ?? ''),
-      patternPayload: String(doc.pattern_payload ?? ''), imageData: (doc.image_data as string) ?? null,
-      density: Number(doc.density ?? 0), size: doc.size == null ? null : Number(doc.size), style: (doc.style as string) ?? null,
-      layoutVersion: String(doc.layout_version ?? 'v3-qr-pattern'), qrWidthPx: (doc.qr_width_px as number) ?? null,
-      qrHeightPx: (doc.qr_height_px as number) ?? null, patternWidthPx: (doc.pattern_width_px as number) ?? null,
-      patternHeightPx: (doc.pattern_height_px as number) ?? null, gapPx: (doc.gap_px as number) ?? null,
-      canvasWidthPx: (doc.canvas_width_px as number) ?? null, canvasHeightPx: (doc.canvas_height_px as number) ?? null,
+    let body: unknown;
+    try {
+      body = await request.json();
+    } catch {
+      return apiError({status: 400, message: 'Body JSON tidak valid.'});
+    }
+
+    // Support both {docs: [...]} and {items: [...]} formats
+    const rawDocs = (body as Record<string, unknown>)?.docs || (body as Record<string, unknown>)?.items;
+    if (!Array.isArray(rawDocs) || rawDocs.length === 0) {
+      return apiError({status: 400, message: 'Docs batch wajib diisi.'});
+    }
+
+    const validation = BatchPatternRequestSchema.safeParse({items: rawDocs});
+    if (!validation.success) {
+      return apiError({status: 400, message: validation.error.issues.map((err) => `${err.path.join('.')}: ${err.message}`).join(', ')});
+    }
+
+    const docs = validation.data.items.map((doc) => ({
+      qrPayload: doc.qr_payload, qrHvalue: doc.qr_hvalue,
+      qrSecret1: doc.qr_secret1, qrSecret2: doc.qr_secret2, qrImage: doc.qr_image,
+      patternPayload: doc.pattern_payload, imageData: doc.image_data ?? null,
+      density: Number(doc.density ?? 0), size: doc.size == null ? null : Number(doc.size), style: doc.style ?? null,
+      layoutVersion: doc.layout_version ?? 'v3-qr-pattern', qrWidthPx: doc.qr_width_px ?? null,
+      qrHeightPx: doc.qr_height_px ?? null, patternWidthPx: doc.pattern_width_px ?? null,
+      patternHeightPx: doc.pattern_height_px ?? null, gapPx: doc.gap_px ?? null,
+      canvasWidthPx: doc.canvas_width_px ?? null, canvasHeightPx: doc.canvas_height_px ?? null,
     }));
-    if (docs.some((doc: Record<string, unknown>) => Object.values(doc).slice(0, 7).some((value) => value === ''))) return apiError({status: 400, message: 'Metadata QR dan payload pattern wajib diisi.'});
     await writeDebugLog({
       event: 'batch-save',
       count: docs.length,

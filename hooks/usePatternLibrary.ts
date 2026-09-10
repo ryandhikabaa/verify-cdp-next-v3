@@ -36,7 +36,7 @@ function buildListQuery(filters: PatternFilters, page: number, pageSize: number)
   const query = new URLSearchParams({
     page: String(page),
     pageSize: String(pageSize),
-    sort: filters.sort,
+    sort: filters.sort === 'newest' ? 'desc' : 'asc',
   });
   if (filters.search.trim()) query.set('search', filters.search.trim());
   if (filters.seedLength > 0) query.set('seedLength', String(filters.seedLength));
