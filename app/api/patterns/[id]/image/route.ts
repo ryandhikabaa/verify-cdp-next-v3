@@ -28,6 +28,7 @@ export async function GET(_request: NextRequest, context: {params: Promise<{id: 
       headers: {
         'Content-Type': 'image/png',
         'Cache-Control': 'no-store',
+        'Content-Disposition': `inline; filename="CDP_${encodeURIComponent(id)}.png"`,
       },
     });
   } catch (error) {

@@ -10,6 +10,7 @@ export type EndpointDocDefinition = {
   summary: string;
   description: string;
   queryExample?: Record<string, string>;
+  queryParams?: Record<string, string>;
   pathParams?: Record<string, string>;
   requestExample?: string;
   responseExample: string;
@@ -58,15 +59,28 @@ export const endpointDocs: EndpointDocDefinition[] = [
     method: 'GET',
     path: '/api/patterns',
     access: 'Public',
-    summary: 'Mengambil seluruh data pattern tersimpan.',
-    description: 'Mengembalikan seluruh katalog pattern yang sudah tersimpan di database.',
+    summary: 'Mengambil katalog pattern dengan paginasi server-side.',
+    description: 'Mengembalikan satu halaman katalog pattern. Payload list TIDAK membawa image (image diambil via /:id/image). Query: page, pageSize (max 100, default 10), search (contains di pattern_payload/qr_payload/qr_hvalue/style), seedLength (panjang seed presisi), day (YYYY-MM-DD), sort (newest|oldest). Tambahkan mode=ids untuk mengembalikan array id tanpa row.',
+    queryParams: {page: '1', pageSize: '10', search: 'VERIFY', seedLength: '24', day: '2026-07-20', sort: 'newest', mode: 'ids'},
     responseExample: JSON.stringify({
       status: true,
       message: 'Patterns retrieved successfully',
-      data: [
-        {id: 'VERIFY-001', record_id: 1, label: 'VERIFY-001', density: 45, size: 512, style: 'stochastic', payload: 'VERIFY-001', image_data: 'data:image/png;base64,...', created_at: '2026-07-20T10:00:00.000Z', updated_at: '2026-07-20T10:00:00.000Z'},
-      ],
+      data: {
+        items: [
+          {id: 'VERIFY-001', record_id: 'uuid', label: 'VERIFY-001', density: 45, size: 512, style: 'stochastic', payload: 'VERIFY-001', qr_image: 'data:image/png;base64,...', created_at: '2026-07-20T10:00:00.000Z', updated_at: '2026-07-20T10:00:00.000Z'},
+        ],
+        total: 1,
+        totalAll: 128,
+        page: 1,
+        pageSize: 10,
+      },
     }, null, 2),
+    errorExamples: [
+      {
+        title: 'mode=ids',
+        response: JSON.stringify({status: true, message: 'Pattern ids retrieved successfully', data: {ids: ['VERIFY-001'], total: 1, totalAll: 128}}, null, 2),
+      },
+    ],
   },
   {
     id: 'patterns-create',
@@ -120,9 +134,26 @@ export const endpointDocs: EndpointDocDefinition[] = [
     path: '/api/patterns/:id/image',
     access: 'Public',
     summary: 'Mengambil image PNG dari pattern yang tersimpan.',
-    description: 'Menghasilkan file image PNG dari serial pattern tertentu.',
+    description: 'Menghasilkan file image PNG dari serial pattern tertentu. Response: image/png, Content-Disposition inline.',
     pathParams: {id: 'VERIFY-001'},
     responseExample: 'Binary PNG response',
+  },
+  {
+    id: 'patterns-lookup',
+    group: 'Patterns',
+    method: 'POST',
+    path: '/api/patterns/lookup',
+    access: 'Admin',
+    summary: 'Mengambil list-doc untuk id eksplisit (selection/detail).',
+    description: 'Menerima `{ ids: string[] }` (maks 200, dedupe otomatis) dan mengembalikan list-doc yang diurutkan mengikuti input. Dipakai untuk preview seleksi dan pengecekan seed sudah terdaftar.',
+    requestExample: JSON.stringify({ids: ['VERIFY-001', 'VERIFY-002']}, null, 2),
+    responseExample: JSON.stringify({
+      status: true,
+      message: 'Patterns retrieved successfully',
+      data: [
+        {id: 'VERIFY-001', record_id: 'uuid', label: 'VERIFY-001', density: 45, qr_image: 'data:image/png;base64,...', created_at: '2026-07-20T10:00:00.000Z'},
+      ],
+    }, null, 2),
   },
   {
     id: 'qr-generate',
