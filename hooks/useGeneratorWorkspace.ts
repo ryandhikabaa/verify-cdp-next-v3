@@ -486,7 +486,7 @@ export function useGeneratorWorkspace(initialHvalue: string) {
       setBatchPatterns(generated);
       setSettings(generated[0].settings);
 
-      await fetchApi(`${API_BASE}/patterns/batch`, {
+      const saved = await fetchApi<{count: number; skipped: number}>(`${API_BASE}/patterns/batch`, {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({
@@ -494,7 +494,8 @@ export function useGeneratorWorkspace(initialHvalue: string) {
         }),
       });
       patternLibrary.refresh();
-      patternLibrary.setDbMessage(`${generated.length} pattern massal tersimpan`);
+      const {count, skipped} = saved.data;
+      patternLibrary.setDbMessage(skipped > 0 ? `${count} pattern massal tersimpan, ${skipped} dilewati` : `${count} pattern massal tersimpan`);
     } catch (error) {
       console.error('Save batch failed:', error);
       patternLibrary.setDbMessage(error instanceof ApiClientError ? error.message : 'Pattern massal dibuat lokal, tapi gagal disimpan ke database');

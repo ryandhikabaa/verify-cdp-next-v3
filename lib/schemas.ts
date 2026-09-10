@@ -39,9 +39,13 @@ export const PatternPayloadSchema = z
   .length(24, 'Pattern payload harus tepat 24 karakter')
   .regex(/^[A-Za-z0-9]+$/, 'Pattern payload hanya boleh huruf dan angka');
 
+// Matches HVALUE_MIN_LENGTH..HVALUE_MAX_LENGTH in lib/cdp/hvalue.ts (1-7).
+// The generator, Setting page, and QR generate endpoint all accept 1-7, so the
+// save schemas must not demand exactly 7 or valid short hvalues are rejected.
 export const QRHValueSchema = z
   .string()
-  .length(7, 'HValue harus tepat 7 karakter')
+  .min(1, 'HValue wajib diisi')
+  .max(7, 'HValue maksimal 7 karakter')
   .regex(/^[A-Za-z0-9]+$/, 'HValue hanya boleh huruf dan angka');
 
 export const QRSecretSchema = z.string().min(1, 'QR secret tidak boleh kosong');
@@ -52,7 +56,16 @@ export const DensitySchema = z.number().min(0).max(100, 'Density maksimal 100');
 
 export const OptionalNumberSchema = z.number().optional();
 
-export const StyleSchema = z.enum(['stochastic_noise', 'halftone_grid', 'error_diffusion']).optional();
+// Stored style is metadata-extended by withGreyTextureStyleTrace() as
+// "<base>;grey-v3;gray=...;alpha=...;sizeRatio=...". The base enum still has
+// to be one of the known styles; the trace suffix is preserved verbatim and
+// parsed back via getStoredPatternStyle/getStoredGreyTextureVersion.
+export const StyleSchema = z
+  .string()
+  .refine((value) => ['stochastic_noise', 'halftone_grid', 'error_diffusion'].includes(value.split(';', 1)[0]), {
+    message: 'Style pattern tidak dikenal',
+  })
+  .optional();
 
 export const LayoutVersionSchema = z.string().default('v3-qr-pattern');
 
@@ -98,7 +111,7 @@ export type PatternListQueryInput = z.infer<typeof PatternListQuerySchema>;
 // ============================================
 
 export const QRGenerateRequestSchema = z.object({
-  hvalue: z.string().length(7, 'HValue harus tepat 7 karakter'),
+  hvalue: QRHValueSchema,
 });
 
 export type QRGenerateRequestInput = z.infer<typeof QRGenerateRequestSchema>;

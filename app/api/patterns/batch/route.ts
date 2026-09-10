@@ -45,8 +45,15 @@ export async function POST(request: NextRequest) {
         pattern_payload: doc.patternPayload,
       })),
     });
-    await prisma.patternGenerated.createMany({data: docs});
-    return apiSuccess({count: docs.length}, {message: 'Patterns saved'});
+    // skipDuplicates keeps one already-stored pattern_payload from aborting the
+    // whole batch (pattern_payload is unique); the client dedups seeds first, so
+    // a dropped row means a genuine race with another save, not a silent bug.
+    const inserted = await prisma.patternGenerated.createMany({data: docs, skipDuplicates: true});
+    const skipped = docs.length - inserted.count;
+    return apiSuccess(
+      {count: inserted.count, skipped},
+      {message: skipped > 0 ? `${inserted.count} pattern tersimpan, ${skipped} dilewati (sudah ada)` : 'Patterns saved'},
+    );
   } catch (error) {
     console.error('Error saving batch:', error);
     return apiError({status: 500, message: 'Gagal menyimpan pattern batch.'});
