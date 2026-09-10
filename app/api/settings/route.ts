@@ -1,7 +1,7 @@
 import {NextRequest} from 'next/server';
 import {apiError, apiSuccess} from '@/lib/api-response';
 import {getSetting, HVALUE_SETTING_KEY, MAX_SCAN_SETTING_KEY, setSetting} from '@/lib/db/settings';
-import {SettingsUpdateSchema} from '@/lib/schemas';
+import {SettingsUpdateSchema, type SettingsUpdateInput} from '@/lib/schemas';
 
 const EDITABLE_SETTING_KEYS = [MAX_SCAN_SETTING_KEY, HVALUE_SETTING_KEY] as const;
 
@@ -26,6 +26,21 @@ export async function GET() {
   }
 }
 
+/** Maps validated settings payloads to the persisted key/value pairs. */
+function buildUpdates(data: SettingsUpdateInput): Array<{parameter: string; value: string}> {
+  const updates: Array<{parameter: string; value: string}> = [];
+
+  if (data.max_scan !== undefined) {
+    updates.push({parameter: MAX_SCAN_SETTING_KEY, value: String(data.max_scan)});
+  }
+
+  if (data.hvalue !== undefined) {
+    updates.push({parameter: HVALUE_SETTING_KEY, value: data.hvalue});
+  }
+
+  return updates;
+}
+
 /** Updates one or more editable application settings. */
 export async function PATCH(request: NextRequest) {
   let body: Record<string, unknown>;
@@ -40,24 +55,7 @@ export async function PATCH(request: NextRequest) {
     return apiError({status: 400, message: validation.error.issues.map((err) => `${err.path.join('.')}: ${err.message}`).join(', ')});
   }
 
-  const updates: Array<{parameter: string; value: string}> = [];
-
-  for (const parameter of EDITABLE_SETTING_KEYS) {
-    if (!(parameter in validation.data)) continue;
-
-    if (parameter === MAX_SCAN_SETTING_KEY) {
-      if (validation.data.max_scan !== undefined) {
-        updates.push({parameter, value: String(validation.data.max_scan)});
-      }
-    }
-
-    if (parameter === HVALUE_SETTING_KEY) {
-      if (validation.data.hvalue !== undefined) {
-        updates.push({parameter, value: validation.data.hvalue});
-      }
-    }
-  }
-
+  const updates = buildUpdates(validation.data);
   if (updates.length === 0) {
     return apiError({status: 400, message: 'Tidak ada setting yang valid untuk diperbarui.'});
   }

@@ -120,7 +120,17 @@ export type QRGenerateRequestInput = z.infer<typeof QRGenerateRequestSchema>;
 // Settings Schemas
 // ============================================
 
-export const MaxScanSettingSchema = z.number().int().nonnegative('max_scan harus berupa angka bulat >= 0');
+function coerceMaxScan(value: number | string): number {
+  if (typeof value === 'number') return value;
+  const trimmed = value.trim();
+  return trimmed === '' ? Number.NaN : Number(trimmed);
+}
+
+export const MaxScanSettingSchema = z
+  .union([z.number(), z.string()])
+  .transform(coerceMaxScan)
+  .refine((value) => Number.isInteger(value), 'max_scan harus berupa angka bulat')
+  .refine((value) => value >= 0, 'max_scan harus berupa angka bulat >= 0');
 
 export const HValueSettingSchema = z
   .string()
