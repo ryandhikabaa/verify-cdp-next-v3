@@ -436,7 +436,7 @@ export function useVerifyScanner() {
 
   useEffect(() => {
     let scanInterval: ReturnType<typeof setInterval>;
-    if (scanMode === 'auto' && cameraReady && !matchResult && patternLibrary.docsList.length > 0 && !errorMsg) {
+    if (scanMode === 'auto' && cameraReady && !matchResult && patternLibrary.totalAll > 0 && !errorMsg) {
       scanInterval = setInterval(() => {
         // Camera drivers can briefly block the main thread while applying a
         // hardware zoom. Do not compete with that operation by starting a
@@ -446,7 +446,7 @@ export function useVerifyScanner() {
       }, SCAN_INTERVAL_MS);
     }
     return () => clearInterval(scanInterval);
-  }, [scanMode, cameraReady, matchResult, errorMsg, patternLibrary.docsList.length]);
+  }, [scanMode, cameraReady, matchResult, errorMsg, patternLibrary.totalAll]);
 
   /** Starts the mobile camera with fallbacks and safe StrictMode cleanup. */
   const startCamera = async () => {
@@ -669,11 +669,11 @@ export function useVerifyScanner() {
     scanDataUrl: string;
     qrPreview: QrDetectionPreview | null;
     scanGeneration: number;
-    dbList: PatternDoc[];
     payloadMode: 'three-part';
   }) => {
-    const {lookupId, scanDataUrl, qrPreview, scanGeneration, dbList, payloadMode} = args;
-    const dbMatch = dbList.find((doc) => doc.id === lookupId);
+    const {lookupId, scanDataUrl, qrPreview, scanGeneration, payloadMode} = args;
+    const docs = await patternLibrary.lookupDocs([lookupId]);
+    const dbMatch = docs.find((doc) => doc.id === lookupId);
     const {latitude, longitude} = await getBrowserLocation();
     const verifiedAt = new Date().toISOString();
 
@@ -848,7 +848,6 @@ export function useVerifyScanner() {
         scanDataUrl,
         qrPreview,
         scanGeneration,
-        dbList: patternLibrary.docsList,
         payloadMode: 'three-part' as const,
       });
     } catch (error) {
@@ -886,7 +885,6 @@ export function useVerifyScanner() {
     focusBox,
     isCropModalOpen,
     setIsCropModalOpen,
-    docsList: patternLibrary.docsList,
     startCamera,
     toggleFlash,
     setCameraZoomLevel,

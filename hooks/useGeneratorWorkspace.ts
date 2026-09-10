@@ -116,6 +116,7 @@ export function useGeneratorWorkspace(initialHvalue: string) {
   const [saveConfirmOpen, setSaveConfirmOpen] = useState(false);
   const [batchConfirmOpen, setBatchConfirmOpen] = useState(false);
   const [processingMessage, setProcessingMessage] = useState('');
+  const [batchProgress, setBatchProgress] = useState<{done: number; total: number} | null>(null);
   const qrCache = useRef(new Map<string, QrGenerateSuccess>());
   const [qrLoading, setQrLoading] = useState(false);
   const [qrError, setQrError] = useState<string | null>(null);
@@ -147,25 +148,27 @@ export function useGeneratorWorkspace(initialHvalue: string) {
     return null;
   }, [batchCount, seedLength]);
 
-  const createUniqueSeeds = useCallback((count: number) => {
-    const existing = new Set(patternLibrary.docsList.map((doc) => doc.id.toUpperCase()));
+  const createUniqueSeeds = useCallback(async (count: number) => {
     const generated = new Set<string>();
     const maxAttempts = Math.max(count * 200, 1000);
     let attempts = 0;
     while (generated.size < count && attempts < maxAttempts) {
       const seed = makeRandomSeed(seedLength);
-      if (!existing.has(seed)) generated.add(seed);
+      generated.add(seed);
       attempts += 1;
     }
     if (generated.size !== count) throw new Error('Ruang seed tidak cukup. Gunakan panjang seed yang lebih besar.');
+    const existing = await patternLibrary.filterExistingSeeds([...generated]);
+    if (existing.size > 0) {
+      for (const seed of existing) generated.delete(seed);
+      if (generated.size < count) throw new Error('Ruang seed tidak cukup. Gunakan panjang seed yang lebih besar.');
+    }
     return [...generated];
-  }, [patternLibrary.docsList, seedLength]);
+  }, [patternLibrary, seedLength]);
 
   const handleSeedLengthChange = useCallback((value: number) => {
     const nextLength = Math.min(Math.max(Math.trunc(value), 1), MAX_SEED_LENGTH);
-    const existing = new Set(patternLibrary.docsList.map((doc) => doc.id.toUpperCase()));
-    let previewSeed = makeRandomSeed(nextLength);
-    while (existing.has(previewSeed)) previewSeed = makeRandomSeed(nextLength);
+    const previewSeed = makeRandomSeed(nextLength);
 
     setSeedLength(nextLength);
     setSettings((current) => ({
@@ -177,7 +180,7 @@ export function useGeneratorWorkspace(initialHvalue: string) {
       payload1: undefined,
       payload2: undefined,
     }));
-  }, [patternLibrary.docsList]);
+  }, []);
 
   const ensurePayloadDraftFilled = useCallback(() => {
     const payloadError = getPayloadDraftError(payloadDraft);
@@ -407,7 +410,7 @@ export function useGeneratorWorkspace(initialHvalue: string) {
     try {
       setSaveConfirmOpen(false);
       await waitForLoadingPaint();
-      const [newSeed] = createUniqueSeeds(1);
+      const [newSeed] = await createUniqueSeeds(1);
       const updatedSettings = await makeManualSettingsForSeed(settings, newSeed, payloadDraft);
       const {canvas, layout} = await renderCompositePattern(updatedSettings);
       const imageData = canvas.toDataURL('image/png');
@@ -419,7 +422,7 @@ export function useGeneratorWorkspace(initialHvalue: string) {
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify(buildPatternDocPayload(updatedSettings, layout, imageData)),
       });
-      await patternLibrary.loadPatterns();
+      patternLibrary.refresh();
       patternLibrary.setDbMessage(`Pattern ${resolveV3Payload(updatedSettings) || newSeed} tersimpan`);
     } catch (error) {
       console.error('Save pattern failed:', error);
@@ -460,7 +463,7 @@ export function useGeneratorWorkspace(initialHvalue: string) {
       setBatchConfirmOpen(false);
       await waitForLoadingPaint();
       const safeCount = Math.min(Math.max(batchCount || 1, 1), MAX_BATCH_COUNT);
-      const seeds = createUniqueSeeds(safeCount);
+      const seeds = await createUniqueSeeds(safeCount);
       const batchBaseSettings = makeAutomaticBatchBase(settings);
       const generated: BatchPattern[] = [];
       for (const seed of seeds) {
@@ -473,9 +476,11 @@ export function useGeneratorWorkspace(initialHvalue: string) {
       // Render sequentially (not Promise.all) so each QR API call completes
       // successfully before the next one starts, keeping the batch deterministic.
       const docs = [];
-      for (const pattern of generated) {
+      setBatchProgress({done: 0, total: safeCount});
+      for (const [index, pattern] of generated.entries()) {
         const {canvas, layout} = await renderCompositePattern(pattern.settings, undefined, CDP_RENDER_SCALE, {skipQrCache: true});
         docs.push(buildPatternDocPayload(pattern.settings, layout, canvas.toDataURL('image/png')));
+        setBatchProgress({done: index + 1, total: safeCount});
       }
 
       setBatchPatterns(generated);
@@ -488,7 +493,7 @@ export function useGeneratorWorkspace(initialHvalue: string) {
           docs,
         }),
       });
-      await patternLibrary.loadPatterns();
+      patternLibrary.refresh();
       patternLibrary.setDbMessage(`${generated.length} pattern massal tersimpan`);
     } catch (error) {
       console.error('Save batch failed:', error);
@@ -496,6 +501,7 @@ export function useGeneratorWorkspace(initialHvalue: string) {
     } finally {
       setIsSaving(false);
       setProcessingMessage('');
+      setBatchProgress(null);
     }
   }, [batchCount, buildPatternDocPayload, createUniqueSeeds, ensurePayloadDraftFilled, generationError, makeSettingsForSeed, patternLibrary, payloadDraft, renderCompositePattern, settings]);
 
@@ -511,26 +517,29 @@ export function useGeneratorWorkspace(initialHvalue: string) {
     });
   }, [batchPatterns, downloadCanvas, renderCompositePattern]);
 
+  /** Fetches a stored pattern PNG without re-rendering via the QR API. */
+  const fetchStoredPatternBlob = useCallback(async (docId: string): Promise<Blob> => {
+    const response = await fetch(`${API_BASE}/patterns/${encodeURIComponent(docId)}/image`, {cache: 'no-store'});
+    if (!response.ok) throw new Error(`Gagal mengambil gambar pattern ${docId}`);
+    return response.blob();
+  }, []);
+
   /** Downloads one stored pattern document as PNG. */
   const downloadDoc = useCallback((doc: PatternDoc) => {
     const docSettings = docToSettings(doc, settings);
     void (async () => {
-      // Stored docs already carry the full rendered PNG. Use it directly so a
-      // download never re-hits the QR API (which requires a hidden value that
-      // the catalog list does not expose).
-      if (doc.image_data) {
-        const canvas = await canvasFromDataUrl(doc.image_data);
-        downloadCanvas(canvas, doc.id, docSettings.gridSize);
-        return;
-      }
-      const {canvas} = await renderCompositePattern(docSettings);
+      // List payloads no longer carry the PNG; fetch it from the image endpoint
+      // so a download never re-renders via the QR API (which needs a hidden
+      // value the catalog list does not expose).
+      const blob = await fetchStoredPatternBlob(doc.id);
+      const canvas = await canvasFromDataUrl(URL.createObjectURL(blob));
       downloadCanvas(canvas, doc.id, docSettings.gridSize);
     })();
-  }, [downloadCanvas, renderCompositePattern, settings]);
+  }, [downloadCanvas, fetchStoredPatternBlob, settings]);
 
   /** Downloads the current multi-selection as PNG or ZIP. */
   const downloadSelectedDocs = useCallback(async () => {
-    const docsToDownload = patternLibrary.docsList.filter((doc) => patternLibrary.selectedDocIds.includes(doc.id));
+    const docsToDownload = await patternLibrary.lookupDocs(patternLibrary.selectedDocIds);
     if (docsToDownload.length === 0) return;
     if (docsToDownload.length === 1) {
       downloadDoc(docsToDownload[0]);
@@ -540,14 +549,8 @@ export function useGeneratorWorkspace(initialHvalue: string) {
     const zip = new JSZip();
     for (const doc of docsToDownload) {
       const docSettings = docToSettings(doc, settings);
-      // Prefer the already-stored PNG so downloads do not re-hit the QR API.
-      const canvas = doc.image_data
-        ? await canvasFromDataUrl(doc.image_data)
-        : (await renderCompositePattern(docSettings)).canvas;
-      const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'));
-      if (blob) {
-        zip.file(`CDP_${sanitizeFilename(doc.id)}_${docSettings.gridSize}x${docSettings.gridSize}.png`, blob);
-      }
+      const blob = await fetchStoredPatternBlob(doc.id);
+      zip.file(`CDP_${sanitizeFilename(doc.id)}_${docSettings.gridSize}x${docSettings.gridSize}.png`, blob);
     }
 
     const zipBlob = await zip.generateAsync({type: 'blob'});
@@ -558,7 +561,7 @@ export function useGeneratorWorkspace(initialHvalue: string) {
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(link.href);
-  }, [downloadDoc, patternLibrary.docsList, patternLibrary.selectedDocIds, renderCompositePattern, settings]);
+  }, [downloadDoc, fetchStoredPatternBlob, patternLibrary]);
 
   return {
     settings,
@@ -588,6 +591,7 @@ export function useGeneratorWorkspace(initialHvalue: string) {
     batchConfirmOpen,
     setBatchConfirmOpen,
     processingMessage,
+    batchProgress,
     patternLibrary,
     requestSaveCurrentPattern,
     requestGenerateBatch,

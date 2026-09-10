@@ -1,12 +1,13 @@
 import {ArrowDown, ArrowUp, ChevronLeft, ChevronRight, Download, Eye, Filter, LoaderCircle, Search, Trash2, X} from 'lucide-react';
-import {useEffect, useMemo, useState} from 'react';
+import {useEffect, useState} from 'react';
 import {Card} from '@/components/ui/Card';
-import {docToSettings} from '@/lib/pattern-helpers';
+import {API_BASE} from '@/lib/app-constants';
 import type {GeneratorSettings, PatternDoc, PatternPreview} from '@/lib/types';
 import type {usePatternLibrary} from '@/hooks/usePatternLibrary';
 
 type PatternLibraryState = ReturnType<typeof usePatternLibrary>;
 const PAGE_SIZE_OPTIONS = [10, 20, 30, 50, 100];
+const SEARCH_DEBOUNCE_MS = 300;
 
 function getCreatedTimestamp(value?: string) {
   if (!value) return 0;
@@ -102,72 +103,57 @@ export function StoredPatternsPanel({
   downloadDoc: (doc: PatternLibraryState['docsList'][number]) => void;
   downloadSelectedDocs: () => void;
 }) {
-  const [currentPage, setCurrentPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
   const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
   const [bulkDeleteConfirmOpen, setBulkDeleteConfirmOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isDownloadingSelected, setIsDownloadingSelected] = useState(false);
   const [detailTargetDoc, setDetailTargetDoc] = useState<PatternDoc | null>(null);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [seedLengthFilter, setSeedLengthFilter] = useState(0);
-  const [dayFilter, setDayFilter] = useState('');
-  const [selectedOnly, setSelectedOnly] = useState(false);
-  const [dateSort, setDateSort] = useState<'newest' | 'oldest'>('newest');
+  const [searchInput, setSearchInput] = useState(patternLibrary.filters.search);
 
-  const filteredDocs = useMemo(() => {
-    const query = searchQuery.trim().toUpperCase();
-    return patternLibrary.docsList
-      .filter((doc) => (
-        (!query || getSearchCorpus(doc).includes(query))
-        && (!seedLengthFilter || doc.id.length === seedLengthFilter)
-        && (!dayFilter || getCreatedDayKey(doc.created_at) === dayFilter)
-        && (!selectedOnly || patternLibrary.selectedDocIds.includes(doc.id))
-      ))
-      .sort((first, second) => {
-        const difference = getCreatedTimestamp(first.created_at) - getCreatedTimestamp(second.created_at);
-        return dateSort === 'oldest' ? difference : -difference;
-      });
-  }, [dateSort, dayFilter, patternLibrary.docsList, patternLibrary.selectedDocIds, searchQuery, seedLengthFilter, selectedOnly]);
-
-  const allFilteredSelected = filteredDocs.length > 0 && filteredDocs.every((doc) => patternLibrary.selectedDocIds.includes(doc.id));
-
-  const totalPages = Math.max(1, Math.ceil(filteredDocs.length / pageSize));
-  const pageNumbers = useMemo(() => {
+  const totalPages = Math.max(1, Math.ceil(patternLibrary.total / patternLibrary.pageSize));
+  const pageNumbers = (() => {
     if (totalPages <= 5) {
       return Array.from({length: totalPages}, (_, index) => index + 1);
     }
 
-    if (currentPage <= 3) {
+    if (patternLibrary.page <= 3) {
       return [1, 2, 3, 4, totalPages];
     }
 
-    if (currentPage >= totalPages - 2) {
+    if (patternLibrary.page >= totalPages - 2) {
       return [1, totalPages - 3, totalPages - 2, totalPages - 1, totalPages];
     }
 
-    return [1, currentPage - 1, currentPage, currentPage + 1, totalPages];
-  }, [currentPage, totalPages]);
+    return [1, patternLibrary.page - 1, patternLibrary.page, patternLibrary.page + 1, totalPages];
+  })();
 
   useEffect(() => {
-    setCurrentPage(1);
-  }, [dateSort, dayFilter, searchQuery, seedLengthFilter, selectedOnly]);
+    const timeoutId = window.setTimeout(() => {
+      if (searchInput.trim() !== patternLibrary.filters.search) {
+        patternLibrary.updateFilters({search: searchInput});
+      }
+    }, SEARCH_DEBOUNCE_MS);
+    return () => window.clearTimeout(timeoutId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchInput]);
 
   useEffect(() => {
-    setCurrentPage((page) => Math.min(page, totalPages));
-  }, [totalPages]);
+    setSearchInput(patternLibrary.filters.search);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [patternLibrary.filters.search]);
 
-  const paginatedDocs = useMemo(() => {
-    const startIndex = (currentPage - 1) * pageSize;
-    return filteredDocs.slice(startIndex, startIndex + pageSize);
-  }, [currentPage, filteredDocs, pageSize]);
+  useEffect(() => {
+    void patternLibrary.loadPatterns();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [patternLibrary.loadPatterns, patternLibrary.refreshToken]);
 
-  const allCurrentPageSelected = paginatedDocs.length > 0 && paginatedDocs.every((doc) => patternLibrary.selectedDocIds.includes(doc.id));
-  const hasActiveFilters = Boolean(searchQuery.trim()) || seedLengthFilter > 0 || dayFilter !== '' || selectedOnly;
+  const allCurrentPageSelected = patternLibrary.docsList.length > 0 && patternLibrary.docsList.every((doc) => patternLibrary.selectedDocIds.includes(doc.id));
+  const allFilteredSelected = allCurrentPageSelected && patternLibrary.total <= patternLibrary.selectedDocIds.length && patternLibrary.selectedDocIds.length > 0 && patternLibrary.selectedDocIds.every((id) => patternLibrary.docsList.some((doc) => doc.id === id));
+  const hasActiveFilters = Boolean(patternLibrary.filters.search.trim()) || patternLibrary.filters.seedLength > 0 || patternLibrary.filters.day !== '';
 
-  const pageStart = filteredDocs.length === 0 ? 0 : (currentPage - 1) * pageSize + 1;
-  const pageEnd = Math.min(currentPage * pageSize, filteredDocs.length);
-  const selectedDocsForDelete = useMemo(() => patternLibrary.docsList.filter((doc) => patternLibrary.selectedDocIds.includes(doc.id)), [patternLibrary.docsList, patternLibrary.selectedDocIds]);
+  const pageStart = patternLibrary.total === 0 ? 0 : (patternLibrary.page - 1) * patternLibrary.pageSize + 1;
+  const pageEnd = Math.min(patternLibrary.page * patternLibrary.pageSize, patternLibrary.total);
+  const selectedDocsForDelete = patternLibrary.selectedDocIds.length > 0 ? patternLibrary.docsList.filter((doc) => patternLibrary.selectedDocIds.includes(doc.id)) : [];
 
   const clearSelection = () => {
     if (patternLibrary.selectedDocIds.length > 0) {
@@ -176,10 +162,8 @@ export function StoredPatternsPanel({
   };
 
   const clearFilters = () => {
-    setSearchQuery('');
-    setSeedLengthFilter(0);
-    setDayFilter('');
-    setSelectedOnly(false);
+    setSearchInput('');
+    patternLibrary.resetFilters();
   };
 
   useEffect(() => {
@@ -212,7 +196,7 @@ export function StoredPatternsPanel({
         <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center">
           <div className="rounded-xl border border-cyan-100 bg-white/90 px-3 py-1.5 text-center shadow-sm shadow-cyan-100/60 sm:min-w-24">
             <div className="text-[9px] font-black uppercase tracking-wider text-cyan-700">Total</div>
-            <div className="mt-0.5 text-sm font-black text-slate-950">{patternLibrary.docsList.length} data</div>
+            <div className="mt-0.5 text-sm font-black text-slate-950">{patternLibrary.totalAll} data</div>
           </div>
           <div className="rounded-xl border border-slate-200 bg-white/90 px-3 py-1.5 text-center shadow-sm shadow-slate-100 sm:min-w-24">
             <div className="text-[9px] font-black uppercase tracking-wider text-slate-400">Terpilih</div>
@@ -228,12 +212,12 @@ export function StoredPatternsPanel({
           <span className="mb-1.5 block text-[9px] font-black uppercase tracking-wider text-slate-400">Cari Data</span>
           <div className="flex min-h-9 items-center gap-2 rounded-lg border border-slate-200 bg-white px-2.5 shadow-sm shadow-slate-100 transition focus-within:border-cyan-300 focus-within:ring-4 focus-within:ring-cyan-100/70">
             <Search className="h-4 w-4 text-slate-400" />
-            <input value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder="ID, label, payload, QR, style" className="min-w-0 flex-1 bg-transparent text-xs text-slate-800 outline-none placeholder:text-slate-400 sm:text-sm" />
+            <input value={searchInput} onChange={(event) => setSearchInput(event.target.value)} placeholder="ID, label, payload, QR, style" className="min-w-0 flex-1 bg-transparent text-xs text-slate-800 outline-none placeholder:text-slate-400 sm:text-sm" />
           </div>
         </label>
         <label className="block">
           <span className="mb-1.5 block text-[9px] font-black uppercase tracking-wider text-slate-400">Panjang Seed</span>
-          <select value={seedLengthFilter} onChange={(event) => setSeedLengthFilter(Number(event.target.value))} className="min-h-9 w-full rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-semibold text-slate-700 shadow-sm shadow-slate-100 outline-none transition focus:border-cyan-300 focus:ring-4 focus:ring-cyan-100/70 sm:text-sm">
+          <select value={patternLibrary.filters.seedLength} onChange={(event) => patternLibrary.updateFilters({seedLength: Number(event.target.value)})} className="min-h-9 w-full rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-semibold text-slate-700 shadow-sm shadow-slate-100 outline-none transition focus:border-cyan-300 focus:ring-4 focus:ring-cyan-100/70 sm:text-sm">
             <option value={0}>Semua panjang</option>
             {Array.from({length: 24}, (_, index) => index + 1).map((length) => <option key={length} value={length}>{length} karakter</option>)}
           </select>
@@ -243,8 +227,8 @@ export function StoredPatternsPanel({
           <div className="relative flex min-h-9 items-center gap-2 rounded-lg border border-slate-200 bg-white px-2.5 shadow-sm shadow-slate-100 transition focus-within:border-cyan-300 focus-within:ring-4 focus-within:ring-cyan-100/70">
             <input
               type="date"
-              value={dayFilter}
-              onChange={(event) => setDayFilter(event.target.value)}
+              value={patternLibrary.filters.day}
+              onChange={(event) => patternLibrary.updateFilters({day: event.target.value})}
               onClick={(event) => {
                 const target = event.currentTarget;
                 try {
@@ -255,8 +239,8 @@ export function StoredPatternsPanel({
               }}
               className="min-w-0 flex-1 cursor-pointer bg-transparent text-xs text-slate-800 outline-none placeholder:text-slate-400 [&::-webkit-calendar-picker-indicator]:ml-auto [&::-webkit-calendar-picker-indicator]:cursor-pointer [&::-webkit-calendar-picker-indicator]:opacity-60 hover:[&::-webkit-calendar-picker-indicator]:opacity-100 sm:text-sm"
             />
-            {dayFilter ? (
-              <button type="button" onClick={() => setDayFilter('')} className="shrink-0 rounded-md p-1 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600" aria-label="Reset filter hari" title="Reset filter hari">
+            {patternLibrary.filters.day ? (
+              <button type="button" onClick={() => patternLibrary.updateFilters({day: ''})} className="shrink-0 rounded-md p-1 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600" aria-label="Reset filter hari" title="Reset filter hari">
                 <X className="h-3.5 w-3.5" />
               </button>
             ) : null}
@@ -264,7 +248,7 @@ export function StoredPatternsPanel({
         </label>
         <label className="block">
           <span className="mb-1.5 block text-[9px] font-black uppercase tracking-wider text-slate-400">Urutan</span>
-          <select value={dateSort} onChange={(event) => setDateSort(event.target.value as 'newest' | 'oldest')} className="min-h-9 w-full rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-semibold text-slate-700 shadow-sm shadow-slate-100 outline-none transition focus:border-cyan-300 focus:ring-4 focus:ring-cyan-100/70 sm:text-sm">
+          <select value={patternLibrary.filters.sort} onChange={(event) => patternLibrary.updateFilters({sort: event.target.value as 'newest' | 'oldest'})} className="min-h-9 w-full rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-semibold text-slate-700 shadow-sm shadow-slate-100 outline-none transition focus:border-cyan-300 focus:ring-4 focus:ring-cyan-100/70 sm:text-sm">
             <option value="newest">Terbaru dahulu</option>
             <option value="oldest">Terlama dahulu</option>
           </select>
@@ -274,16 +258,8 @@ export function StoredPatternsPanel({
       <div className="mt-2.5 flex flex-wrap items-center gap-1.5 border-t border-slate-200 pt-2.5">
         <div className="mr-1 inline-flex min-h-8 items-center gap-1.5 rounded-lg bg-white px-2.5 text-[10px] font-bold text-slate-600 shadow-sm shadow-slate-100">
           <Filter className="h-3.5 w-3.5 text-cyan-700" />
-          {filteredDocs.length} dari {patternLibrary.docsList.length} data
+          {patternLibrary.total} dari {patternLibrary.totalAll} data
         </div>
-        <button
-          type="button"
-          onClick={() => setSelectedOnly((current) => !current)}
-          disabled={patternLibrary.selectedDocIds.length === 0}
-          className={`min-h-8 rounded-lg border px-2.5 py-1.5 text-[10px] font-semibold transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40 ${selectedOnly ? 'border-cyan-200 bg-cyan-50 text-cyan-800 shadow-sm shadow-cyan-100' : 'border-slate-200 bg-white text-slate-700 hover:border-cyan-200 hover:text-cyan-800'}`}
-        >
-          Hanya Dipilih
-        </button>
         {hasActiveFilters ? (
           <button type="button" onClick={clearFilters} className="min-h-8 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-[10px] font-semibold text-slate-600 transition hover:border-slate-300 hover:bg-white active:scale-[0.98]">
             Reset Filter
@@ -303,8 +279,16 @@ export function StoredPatternsPanel({
         </div>
         <button
           type="button"
-          onClick={() => patternLibrary.selectDocs(filteredDocs.map((doc) => doc.id))}
-          disabled={filteredDocs.length === 0}
+          onClick={async () => {
+            try {
+              const ids = await patternLibrary.fetchFilteredIds();
+              patternLibrary.selectDocs(ids);
+            } catch (error) {
+              console.error('Select filtered ids failed:', error);
+              patternLibrary.setDbMessage('Gagal memilih data sesuai filter.');
+            }
+          }}
+          disabled={patternLibrary.total === 0}
           className="min-h-8 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-[10px] font-semibold text-slate-700 transition hover:border-cyan-200 hover:bg-cyan-50 hover:text-cyan-800 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40"
           title={allFilteredSelected ? 'Batalkan pilihan semua hasil filter' : 'Pilih semua data sesuai filter aktif'}
         >
@@ -312,8 +296,8 @@ export function StoredPatternsPanel({
         </button>
         <button
           type="button"
-          onClick={() => patternLibrary.selectDocs(paginatedDocs.map((doc) => doc.id))}
-          disabled={paginatedDocs.length === 0}
+          onClick={() => patternLibrary.selectDocs(patternLibrary.docsList.map((doc) => doc.id))}
+          disabled={patternLibrary.docsList.length === 0}
           className="min-h-8 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-[10px] font-semibold text-slate-700 transition hover:border-cyan-200 hover:bg-cyan-50 hover:text-cyan-800 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40"
           title={allCurrentPageSelected ? 'Batalkan pilihan halaman ini' : 'Pilih semua data di halaman ini'}
         >
@@ -354,7 +338,7 @@ export function StoredPatternsPanel({
         </div>
       </div>
 
-      {patternLibrary.docsList.length === 0 ? (
+      {patternLibrary.total === 0 ? (
         <div className="mt-4 rounded-2xl border border-dashed border-cyan-200 bg-[linear-gradient(135deg,rgba(236,254,255,0.58),rgba(248,250,252,0.9))] p-5 text-center shadow-sm shadow-cyan-100/50 sm:p-6">
           <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-xl border border-cyan-100 bg-white text-cyan-700 shadow-sm shadow-cyan-100">
             <Search className="h-4 w-4" />
@@ -370,19 +354,19 @@ export function StoredPatternsPanel({
             <div className="text-center">Detail</div>
             <button
               type="button"
-              onClick={() => setDateSort((current) => current === 'newest' ? 'oldest' : 'newest')}
+              onClick={() => patternLibrary.updateFilters({sort: patternLibrary.filters.sort === 'newest' ? 'oldest' : 'newest'})}
               className="mx-auto inline-flex w-fit items-center gap-1.5 rounded-md py-1 text-center transition hover:text-cyan-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300"
-              aria-label={`Urutkan Created At ${dateSort === 'newest' ? 'terlama dahulu' : 'terbaru dahulu'}`}
-              title={dateSort === 'newest' ? 'Terbaru dahulu' : 'Terlama dahulu'}
+              aria-label={`Urutkan Created At ${patternLibrary.filters.sort === 'newest' ? 'terlama dahulu' : 'terbaru dahulu'}`}
+              title={patternLibrary.filters.sort === 'newest' ? 'Terbaru dahulu' : 'Terlama dahulu'}
             >
               Created At
-              {dateSort === 'newest' ? <ArrowDown className="h-3.5 w-3.5" /> : <ArrowUp className="h-3.5 w-3.5" />}
+              {patternLibrary.filters.sort === 'newest' ? <ArrowDown className="h-3.5 w-3.5" /> : <ArrowUp className="h-3.5 w-3.5" />}
             </button>
             <div className="text-center">Aksi</div>
           </div>
 
           <div className="divide-y divide-slate-100">
-          {paginatedDocs.length === 0 ? (
+          {patternLibrary.docsList.length === 0 ? (
             <div className="px-4 py-8 text-center">
               <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-slate-50 text-slate-400">
                 <Filter className="h-4 w-4" />
@@ -396,7 +380,7 @@ export function StoredPatternsPanel({
               ) : null}
             </div>
           ) : null}
-          {paginatedDocs.map((doc, index) => {
+          {patternLibrary.docsList.map((doc, index) => {
             const payload1 = getPayload1(doc);
             const qrPayload = getQrPayload(doc);
 
@@ -424,7 +408,7 @@ export function StoredPatternsPanel({
                   className="h-5 w-5 shrink-0 cursor-pointer accent-cyan-700"
                   aria-label={`Pilih ${doc.id}`}
                 />
-                <span className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-cyan-700 text-[11px] font-black text-white shadow-sm shadow-cyan-100">#{(currentPage - 1) * pageSize + index + 1}</span>
+                <span className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-cyan-700 text-[11px] font-black text-white shadow-sm shadow-cyan-100">#{(patternLibrary.page - 1) * patternLibrary.pageSize + index + 1}</span>
               </div>
 
               <div className="col-start-2 min-w-0 xl:col-start-auto xl:border-l xl:border-slate-100 xl:pl-3">
@@ -519,17 +503,14 @@ export function StoredPatternsPanel({
           <div className="flex flex-col gap-2.5 border-t border-slate-200 bg-slate-50/80 px-3 py-2.5 sm:flex-row sm:items-center sm:justify-between sm:px-4">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
               <div className="text-[11px] text-slate-500 sm:text-xs">
-                Menampilkan <span className="font-bold text-slate-700">{pageStart}-{pageEnd}</span> dari <span className="font-bold text-slate-700">{filteredDocs.length}</span> data
+                Menampilkan <span className="font-bold text-slate-700">{pageStart}-{pageEnd}</span> dari <span className="font-bold text-slate-700">{patternLibrary.total}</span> data
               </div>
 
               <label className="inline-flex items-center gap-1.5 text-[11px] text-slate-500 sm:text-xs">
                 <span>Per page</span>
                 <select
-                  value={pageSize}
-                  onChange={(event) => {
-                    setPageSize(Number(event.target.value));
-                    setCurrentPage(1);
-                  }}
+                  value={patternLibrary.pageSize}
+                  onChange={(event) => patternLibrary.changePageSize(Number(event.target.value))}
                   className="rounded-md border border-slate-200 bg-white px-2 py-1 text-[10px] font-semibold text-slate-700 outline-none transition focus:border-cyan-300"
                 >
                   {PAGE_SIZE_OPTIONS.map((option) => (
@@ -544,8 +525,8 @@ export function StoredPatternsPanel({
             <div className="flex items-center gap-1.5">
               <button
                 type="button"
-                onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
-                disabled={currentPage === 1}
+                onClick={() => patternLibrary.changePage(Math.max(1, patternLibrary.page - 1))}
+                disabled={patternLibrary.page === 1}
                 className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-700 transition hover:border-slate-300 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
                 aria-label="Previous page"
               >
@@ -562,9 +543,9 @@ export function StoredPatternsPanel({
                       {needsEllipsis ? <span className="px-1 text-xs text-slate-400">...</span> : null}
                       <button
                         type="button"
-                        onClick={() => setCurrentPage(pageNumber)}
+                        onClick={() => patternLibrary.changePage(pageNumber)}
                         className={`inline-flex h-7 min-w-7 items-center justify-center rounded-md px-2 text-[10px] font-semibold transition ${
-                          currentPage === pageNumber
+                          patternLibrary.page === pageNumber
                             ? 'bg-cyan-700 text-white'
                             : 'border border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50'
                         }`}
@@ -578,8 +559,8 @@ export function StoredPatternsPanel({
 
               <button
                 type="button"
-                onClick={() => setCurrentPage((page) => Math.min(totalPages, page + 1))}
-                disabled={currentPage === totalPages}
+                onClick={() => patternLibrary.changePage(Math.min(totalPages, patternLibrary.page + 1))}
+                disabled={patternLibrary.page === totalPages}
                 className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-700 transition hover:border-slate-300 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
                 aria-label="Next page"
               >
@@ -756,11 +737,7 @@ export function StoredPatternsPanel({
                     <div className="text-[11px] font-semibold text-slate-500">PNG</div>
                   </div>
                   <div className="mt-3 overflow-hidden rounded-[1.25rem] border border-slate-200 bg-white shadow-inner shadow-slate-100">
-                    {detailTargetDoc.image_data ? (
-                      <img src={detailTargetDoc.image_data} alt={detailTargetDoc.label || detailTargetDoc.id} className="h-full max-h-[240px] w-full object-contain bg-[radial-gradient(circle_at_top,rgba(224,242,254,0.72),rgba(255,255,255,0.96))] [image-rendering:pixelated]" />
-                    ) : (
-                      <div className="flex min-h-[200px] items-center justify-center px-6 text-center text-sm text-slate-500">Preview gambar belum tersedia untuk data ini.</div>
-                    )}
+                    <img src={`${API_BASE}/patterns/${encodeURIComponent(detailTargetDoc.id)}/image`} alt={detailTargetDoc.label || detailTargetDoc.id} className="h-full max-h-[240px] w-full object-contain bg-[radial-gradient(circle_at_top,rgba(224,242,254,0.72),rgba(255,255,255,0.96))] [image-rendering:pixelated]" />
                   </div>
 
                   <div className="mt-4 flex items-center justify-between gap-3">
