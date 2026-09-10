@@ -285,7 +285,7 @@ export async function POST(request: NextRequest) {
             rawPayloadText,
           });
     const notes = exceedsMaxScan
-      ? 'Produk telah melewati batas maksimum scan yang diizinkan.'
+      ? 'Keaslian produk tidak dapat dikonfirmasi.'
       : isStructuredLayout
         ? pattern
           ? 'Produk berhasil diverifikasi dan dinyatakan autentik.'
